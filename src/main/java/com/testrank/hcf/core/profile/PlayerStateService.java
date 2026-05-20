@@ -28,6 +28,7 @@ public final class PlayerStateService implements HCFService {
     private final Set<UUID> staffBuild = ConcurrentHashMap.newKeySet();
     private final Set<UUID> strengthNerf = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<UUID, Set<UUID>> ignored = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, Long> logoutUntil = new ConcurrentHashMap<>();
 
     public PlayerStateService(HCFSettings settings, ProfileService profiles) {
         this.settings = settings;
@@ -38,6 +39,8 @@ public final class PlayerStateService implements HCFService {
         sessionStart.put(player.getUniqueId(), System.currentTimeMillis());
         profiles.cached(player.getUniqueId()).ifPresentOrElse(profile -> {
             lives.putIfAbsent(player.getUniqueId(), (int) profile.statistics().getOrDefault("lives", (long) settings.defaultLives()).longValue());
+            playtime.put(player.getUniqueId(), profile.statistic("playtime"));
+            killstreaks.put(player.getUniqueId(), (int) profile.statistic("killstreak"));
             long deathbanUntil = profile.statistic("deathban_until");
             if (deathbanUntil > System.currentTimeMillis()) {
                 deathbans.put(player.getUniqueId(), deathbanUntil);
@@ -47,8 +50,10 @@ public final class PlayerStateService implements HCFService {
 
     public void quit(Player player) {
         long started = sessionStart.getOrDefault(player.getUniqueId(), System.currentTimeMillis());
-        playtime.merge(player.getUniqueId(), System.currentTimeMillis() - started, Long::sum);
+        long total = playtime.merge(player.getUniqueId(), System.currentTimeMillis() - started, Long::sum);
         sessionStart.remove(player.getUniqueId());
+        logoutUntil.remove(player.getUniqueId());
+        persist(player.getUniqueId(), "playtime", total);
     }
 
     public long playtime(UUID uuid) {
@@ -181,7 +186,9 @@ public final class PlayerStateService implements HCFService {
     }
 
     public int addKillstreak(UUID uuid, int amount) {
-        return killstreaks.merge(uuid, amount, Integer::sum);
+        int next = killstreaks.compute(uuid, (ignored, current) -> Math.max(0, (current == null ? 0 : current) + amount));
+        persist(uuid, "killstreak", next);
+        return next;
     }
 
     public int killstreak(UUID uuid) {
@@ -201,6 +208,28 @@ public final class PlayerStateService implements HCFService {
 
     public Map<UUID, Integer> killstreaks() {
         return Map.copyOf(killstreaks);
+    }
+
+    public void startLogout(UUID uuid, long millis) {
+        logoutUntil.put(uuid, System.currentTimeMillis() + Math.max(1_000L, millis));
+    }
+
+    public void cancelLogout(UUID uuid) {
+        logoutUntil.remove(uuid);
+    }
+
+    public boolean loggingOut(UUID uuid) {
+        return logoutRemaining(uuid) > 0L;
+    }
+
+    public long logoutRemaining(UUID uuid) {
+        long until = logoutUntil.getOrDefault(uuid, 0L);
+        long remaining = until - System.currentTimeMillis();
+        if (remaining <= 0L) {
+            logoutUntil.remove(uuid);
+            return 0L;
+        }
+        return remaining;
     }
 
     private static boolean toggle(Set<UUID> set, UUID uuid) {

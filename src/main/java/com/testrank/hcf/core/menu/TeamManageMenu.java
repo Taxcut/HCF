@@ -1,5 +1,6 @@
 package com.testrank.hcf.core.menu;
 
+import com.testrank.hcf.core.config.HCFSettings;
 import com.testrank.hcf.core.team.DtrService;
 import com.testrank.hcf.core.team.Team;
 import com.testrank.hcf.core.team.TeamRole;
@@ -24,17 +25,19 @@ public final class TeamManageMenu extends Menu {
     private final MenuService menus;
     private final TeamService teams;
     private final DtrService dtr;
+    private final HCFSettings settings;
     private final Team team;
     private final Page page;
 
-    public TeamManageMenu(MenuService menus, TeamService teams, DtrService dtr, Team team) {
-        this(menus, teams, dtr, team, Page.HOME);
+    public TeamManageMenu(MenuService menus, TeamService teams, DtrService dtr, HCFSettings settings, Team team) {
+        this(menus, teams, dtr, settings, team, Page.HOME);
     }
 
-    private TeamManageMenu(MenuService menus, TeamService teams, DtrService dtr, Team team, Page page) {
+    private TeamManageMenu(MenuService menus, TeamService teams, DtrService dtr, HCFSettings settings, Team team, Page page) {
         this.menus = menus;
         this.teams = teams;
         this.dtr = dtr;
+        this.settings = settings;
         this.team = team;
         this.page = page;
     }
@@ -118,11 +121,19 @@ public final class TeamManageMenu extends Menu {
                 buttons.put(15, staticButton(item(Material.BOOK, "&cLogs", "&7Recent logs&7: &f" + team.logs().size())));
             }
             case MISSIONS -> {
+                if (!settings.teamMissionsEnabled()) {
+                    disabled(buttons, "&cMissions Disabled", "&7Faction missions are disabled", "&7in config.yml for this map.");
+                    return;
+                }
                 buttons.put(11, staticButton(item(Material.MAP, "&cClaim Mission", "&7Claim Locked&7: " + (team.claimLocked() ? "&aYes" : "&7No"), "&7HQ Set&7: " + (team.hq() == null ? "&cNo" : "&aYes"))));
                 buttons.put(13, staticButton(item(Material.DIAMOND_SWORD, "&cPvP Mission", "&7KOTH Captures&7: &f" + team.kothCaps(), "&7Faction Points&7: &f" + team.points())));
                 buttons.put(15, staticButton(item(Material.CHEST, "&cEconomy Mission", "&7Balance&7: &a$" + (long) team.balance(), "&7Members&7: &f" + team.members().size())));
             }
             case CONTRACTS -> {
+                if (!settings.teamContractsEnabled()) {
+                    disabled(buttons, "&cContracts Disabled", "&7Faction contracts are disabled", "&7in config.yml for this map.");
+                    return;
+                }
                 buttons.put(12, staticButton(item(Material.PAPER, "&cActive Contract", "&7Win KOTHs, protect DTR,", "&7and grow your faction balance.", "", "&7Progress updates from live faction data.")));
                 buttons.put(14, staticButton(item(Material.BOOK_AND_QUILL, "&cContract Progress", "&7Points&7: &f" + team.points(), "&7KOTH Caps&7: &f" + team.kothCaps(), "&7DTR&7: &a" + String.format(Locale.US, "%.2f", team.dtr()))));
             }
@@ -132,8 +143,12 @@ public final class TeamManageMenu extends Menu {
                 buttons.put(15, staticButton(item(Material.BEACON, "&cEvent Weight", "&7KOTH Captures&7: &f" + team.kothCaps())));
             }
             case GEM_SHOP -> {
+                if (!settings.teamGemShopEnabled()) {
+                    disabled(buttons, "&cGem Shop Disabled", "&7Faction gem purchases are disabled", "&7in config.yml for this map.");
+                    return;
+                }
                 buttons.put(12, staticButton(item(Material.EMERALD, "&cFaction Gems", "&7Spend faction rewards from", "&7events and contracts.", "", "&7Current Points&7: &f" + team.points())));
-                buttons.put(14, staticButton(item(Material.DIAMOND, "&cReward Status", "&7Reward purchases are controlled", "&7through faction points and admin", "&7commands for this build.")));
+                buttons.put(14, staticButton(item(Material.DIAMOND, "&cReward Status", "&7Reward purchases are controlled", "&7through faction points and", "&7configured admin rewards.")));
             }
         }
     }
@@ -147,9 +162,13 @@ public final class TeamManageMenu extends Menu {
 
             @Override
             public void click(Player player, ClickType clickType) {
-                new TeamManageMenu(menus, teams, dtr, team, target).open(player, menus);
+                new TeamManageMenu(menus, teams, dtr, settings, team, target).open(player, menus);
             }
         };
+    }
+
+    private void disabled(Map<Integer, Button> buttons, String name, String... lore) {
+        buttons.put(13, staticButton(item(Material.BARRIER, name, lore)));
     }
 
     private Button toggle(Material material, String name, String status, Runnable action) {

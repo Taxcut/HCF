@@ -135,6 +135,9 @@ public final class CombatListener implements Listener {
         if (killerProfile.isPresent()) {
             var killer = killerProfile.get();
             killer.addKill();
+            if (antiClean.fight(killer.uuid()).isPresent()) {
+                killer.addStatistic("teamfight_kills", 1);
+            }
             profiles.save(killer);
             states.addKillstreak(killer.uuid(), 1);
             Player killerPlayer = Bukkit.getPlayer(killer.uuid());

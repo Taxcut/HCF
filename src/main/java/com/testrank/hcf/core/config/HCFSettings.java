@@ -43,6 +43,9 @@ public record HCFSettings(
         boolean bardEnabled,
         boolean rogueEnabled,
         boolean ghostEnabled,
+        boolean teamMissionsEnabled,
+        boolean teamContractsEnabled,
+        boolean teamGemShopEnabled,
         List<String> scoreboardTitleFrames
 ) {
     public HCFSettings {
@@ -115,6 +118,9 @@ public record HCFSettings(
                 config.getBoolean("classes.bard", true),
                 config.getBoolean("classes.rogue", true),
                 config.getBoolean("classes.ghost", true),
+                config.getBoolean("team-manage.missions-enabled", false),
+                config.getBoolean("team-manage.contracts-enabled", false),
+                config.getBoolean("team-manage.gem-shop-enabled", false),
                 config.getStringList("scoreboard.title-frames")
         );
     }

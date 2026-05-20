@@ -156,8 +156,16 @@ public final class ScoreboardService implements HCFService {
     private List<String> lines(Player player) {
         List<String> lines = new ArrayList<>(15);
 
-        globalTimers.activeTimers().forEach(timer ->
-                addTimer(lines, "&a" + timer.displayName(), timer.remaining()));
+        globalTimers.activeTimers().forEach(timer -> {
+            String lower = timer.displayName().toLowerCase(Locale.ROOT);
+            if (lower.contains("outpost") && !playerSettings.enabled(player.getUniqueId(), "outpost-scoreboard")) {
+                return;
+            }
+            if (lower.contains("sale") && !playerSettings.enabled(player.getUniqueId(), "sale-timer-scoreboard")) {
+                return;
+            }
+            addTimer(lines, "&a" + timer.displayName(), timer.remaining());
+        });
 
         if (sotw.active()) {
             addTimer(lines, sotw.pvpEnabled(player.getUniqueId()) ? "&c&mSOTW Timer" : "&aSOTW Timer", sotw.remaining());
@@ -236,7 +244,7 @@ public final class ScoreboardService implements HCFService {
         lines.add("&7&m--------------------");
         lines.add("&cTeam&7: &f" + focused.name());
         lines.add("&cHome&7: &f" + location(focused.hq()));
-        lines.add("&cDTR&7: &f" + String.format(Locale.US, "%.1f", focused.dtr()));
+        lines.add("&cDTR&7: &f" + dtrText(player, focused.dtr()));
         lines.add("&cOnline&7: &f" + online(focused) + "/" + focused.members().size());
     }
 
@@ -302,6 +310,13 @@ public final class ScoreboardService implements HCFService {
 
     private static String location(Position position) {
         return position == null ? "None" : (int) position.x() + ", " + (int) position.y() + ", " + (int) position.z();
+    }
+
+    private String dtrText(Player player, double dtr) {
+        if (!playerSettings.enabled(player.getUniqueId(), "dtr-hearts")) {
+            return String.format(Locale.US, "%.1f", dtr);
+        }
+        return String.format(Locale.US, "%.2f", dtr) + " \u2764";
     }
 
     private static int online(Team team) {

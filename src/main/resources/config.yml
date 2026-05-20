@@ -192,6 +192,11 @@ refill-signs:
 staff-mode:
   enabled: true
 
+team-manage:
+  missions-enabled: false
+  contracts-enabled: false
+  gem-shop-enabled: false
+
 key-all:
   interval-minutes: 60
   commands:

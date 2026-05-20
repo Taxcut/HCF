@@ -64,7 +64,7 @@ public final class LeaderboardMenu extends Menu {
                 "&7Cached and refreshed without",
                 "&7heavy database work on click.",
                 "",
-                "&8Shows loaded player data.")));
+                "&8Shows persisted map data.")));
         return buttons;
     }
 
@@ -75,7 +75,7 @@ public final class LeaderboardMenu extends Menu {
             buttons.put(slot++, staticButton(item(Material.PAPER, rankColor(rank) + "#" + rank + " &c" + entry.name(),
                     "&7Value&7: &f" + category.valueText(entry.value()),
                     "",
-                    "&8Updated from live profile stats.")));
+                    "&8Updated from persisted profile stats.")));
             rank++;
             if (slot == 17) {
                 slot = 19;

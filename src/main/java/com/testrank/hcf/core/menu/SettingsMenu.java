@@ -12,6 +12,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class SettingsMenu extends Menu {
     private static final int[] SLOTS = {
@@ -19,6 +20,7 @@ public final class SettingsMenu extends Menu {
             19, 20, 21, 22, 23, 24, 25,
             31, 32
     };
+    private static final Set<String> CONFIG_GATED = Set.of("hologram-visibility", "lambo-mode");
 
     private final MenuService menus;
     private final PlayerSettingsService settings;
@@ -47,7 +49,7 @@ public final class SettingsMenu extends Menu {
         }
         for (int index = 0; index < PlayerSettingsService.DEFINITIONS.size() && index < SLOTS.length; index++) {
             PlayerSettingsService.SettingDefinition definition = PlayerSettingsService.DEFINITIONS.get(index);
-            buttons.put(SLOTS[index], toggle(definition, icon(index)));
+            buttons.put(SLOTS[index], CONFIG_GATED.contains(definition.key()) ? disabled(definition) : toggle(definition, icon(index)));
         }
         buttons.put(40, staticButton(item(Material.BOOK, "&cSettings Help",
                 "&7These toggles control client-side",
@@ -73,6 +75,25 @@ public final class SettingsMenu extends Menu {
                 settings.toggle(player.getUniqueId(), definition.key());
                 player.playSound(player.getLocation(), Sound.CLICK, 0.7F, 1.25F);
                 menus.refresh(player);
+            }
+        };
+    }
+
+    private Button disabled(PlayerSettingsService.SettingDefinition definition) {
+        return new Button() {
+            @Override
+            public ItemStack icon(Player player) {
+                return item(Material.BARRIER, "&7" + definition.displayName(),
+                        "&7Status&7: &cDisabled",
+                        "",
+                        "&7This feature is config-gated",
+                        "&7until its backing system is enabled.");
+            }
+
+            @Override
+            public void click(Player player, ClickType clickType) {
+                player.playSound(player.getLocation(), Sound.NOTE_BASS, 0.7F, 0.7F);
+                player.sendMessage(Text.color("&8[&cSettings&8] &c" + definition.displayName() + " is disabled for this map."));
             }
         };
     }

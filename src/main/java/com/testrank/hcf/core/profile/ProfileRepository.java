@@ -5,6 +5,7 @@ import com.mongodb.client.model.ReplaceOptions;
 import com.testrank.hcf.core.mongo.MongoManager;
 
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -36,5 +37,13 @@ public final class ProfileRepository {
                 codec.encode(profile),
                 new ReplaceOptions().upsert(true)
         )).thenApply(ignored -> null);
+    }
+
+    public CompletableFuture<List<Profile>> loadAll() {
+        if (!mongo.enabled()) {
+            return CompletableFuture.completedFuture(List.copyOf(memory.values()));
+        }
+        return MongoManager.toListFuture(mongo.collection("profiles").find())
+                .thenApply(documents -> documents.stream().map(codec::decode).toList());
     }
 }

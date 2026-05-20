@@ -50,6 +50,15 @@ public final class ProfileService implements HCFService {
         return cache.values();
     }
 
+    public CompletableFuture<java.util.List<Profile>> loadAll() {
+        return repository.loadAll().thenApply(loaded -> {
+            for (Profile profile : loaded) {
+                cache.merge(profile.uuid(), profile, (cached, ignored) -> cached);
+            }
+            return loaded.stream().map(profile -> cache.getOrDefault(profile.uuid(), profile)).toList();
+        });
+    }
+
     public CompletableFuture<Void> save(Profile profile) {
         profile.seenNow();
         return repository.save(profile).thenCompose(ignored -> redis.publish("profiles", profile.uuid().toString()));

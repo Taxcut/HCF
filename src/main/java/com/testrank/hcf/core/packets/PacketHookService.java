@@ -8,6 +8,7 @@ public final class PacketHookService implements HCFService {
     private final Plugin plugin;
     private final ClientIntegrationService clients;
     private final PacketRateLimiter movementLimiter = new PacketRateLimiter();
+    private AutoCloseable bridge;
 
     public PacketHookService(Plugin plugin, ClientIntegrationService clients) {
         this.plugin = plugin;
@@ -20,10 +21,27 @@ public final class PacketHookService implements HCFService {
             plugin.getLogger().info("PacketEvents was not detected; packet-level optimizations are disabled.");
             return;
         }
-        plugin.getLogger().info("PacketEvents detected; HCF packet limiter is ready.");
+        try {
+            bridge = new PacketEventsBridge(plugin, movementLimiter);
+            plugin.getLogger().info("PacketEvents listener registered; movement packet limiting is active.");
+        } catch (LinkageError | RuntimeException exception) {
+            bridge = null;
+            plugin.getLogger().warning("PacketEvents detected but could not be initialized: " + exception.getMessage());
+        }
     }
 
     public PacketRateLimiter movementLimiter() {
         return movementLimiter;
+    }
+
+    @Override
+    public void close() {
+        if (bridge != null) {
+            try {
+                bridge.close();
+            } catch (Exception exception) {
+                plugin.getLogger().warning("PacketEvents bridge shutdown failed: " + exception.getMessage());
+            }
+        }
     }
 }

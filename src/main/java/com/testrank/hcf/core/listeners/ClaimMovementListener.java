@@ -2,7 +2,7 @@ package com.testrank.hcf.core.listeners;
 
 import com.testrank.hcf.core.claim.Claim;
 import com.testrank.hcf.core.claim.ClaimService;
-import com.testrank.hcf.core.config.HCFSettings;
+import com.testrank.hcf.core.settings.PlayerSettingsService;
 import com.testrank.hcf.core.team.TeamService;
 import com.testrank.hcf.core.util.Text;
 import org.bukkit.Location;
@@ -20,11 +20,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ClaimMovementListener implements Listener {
     private final ClaimService claims;
     private final TeamService teams;
+    private final PlayerSettingsService settings;
     private final Map<UUID, MovementState> state = new ConcurrentHashMap<>();
 
-    public ClaimMovementListener(ClaimService claims, TeamService teams, HCFSettings settings) {
+    public ClaimMovementListener(ClaimService claims, TeamService teams, PlayerSettingsService settings) {
         this.claims = claims;
         this.teams = teams;
+        this.settings = settings;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -39,7 +41,7 @@ public final class ClaimMovementListener implements Listener {
         MovementState previous = state.put(player.getUniqueId(), new MovementState(to.getBlockX(), to.getBlockZ(), current == null ? null : current.id()));
         UUID previousClaim = previous == null ? null : previous.claimId();
         UUID currentClaim = current == null ? null : current.id();
-        if (!java.util.Objects.equals(previousClaim, currentClaim)) {
+        if (!java.util.Objects.equals(previousClaim, currentClaim) && settings.enabled(player.getUniqueId(), "annoying-messages")) {
             player.sendMessage(Text.color(entryMessage(player, current)));
         }
     }

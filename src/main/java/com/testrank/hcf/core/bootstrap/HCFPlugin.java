@@ -33,6 +33,7 @@ import com.testrank.hcf.core.listeners.ClaimWandListener;
 import com.testrank.hcf.core.listeners.ChatListener;
 import com.testrank.hcf.core.listeners.CommandBlockListener;
 import com.testrank.hcf.core.listeners.CombatListener;
+import com.testrank.hcf.core.listeners.LogoutListener;
 import com.testrank.hcf.core.listeners.MenuListener;
 import com.testrank.hcf.core.listeners.PartnerItemListener;
 import com.testrank.hcf.core.listeners.PvpProtectionListener;
@@ -41,6 +42,7 @@ import com.testrank.hcf.core.listeners.ReadOnlyInventoryListener;
 import com.testrank.hcf.core.listeners.SotwListener;
 import com.testrank.hcf.core.listeners.StaffListener;
 import com.testrank.hcf.core.listeners.SettingsGameplayListener;
+import com.testrank.hcf.core.listeners.StatsTrackingListener;
 import com.testrank.hcf.core.lunar.ClientIntegrationService;
 import com.testrank.hcf.core.menu.MenuService;
 import com.testrank.hcf.core.mongo.MongoManager;
@@ -70,8 +72,13 @@ import com.testrank.hcf.core.timer.GlobalTimerService;
 import com.testrank.hcf.core.vanish.VanishService;
 import com.testrank.hcf.core.waypoint.WaypointService;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.Material;
+import org.bukkit.Sound;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffectType;
 
 import java.io.File;
 
@@ -119,10 +126,10 @@ public final class HCFPlugin extends JavaPlugin {
         EotwService eotw = services.register(EotwService.class, new EotwService());
         SotwService sotw = services.register(SotwService.class, new SotwService());
         KothService koths = services.register(KothService.class, new KothService(this, events, claims, teams, profiles, settings));
-        AntiCleanService antiClean = services.register(AntiCleanService.class, new AntiCleanService(this, teams, koths, settings));
+        PlayerSettingsService playerSettings = services.register(PlayerSettingsService.class, new PlayerSettingsService(profiles));
+        AntiCleanService antiClean = services.register(AntiCleanService.class, new AntiCleanService(this, teams, koths, settings, playerSettings));
 
         PermissionService permissions = services.register(PermissionService.class, new PermissionService());
-        PlayerSettingsService playerSettings = services.register(PlayerSettingsService.class, new PlayerSettingsService(profiles));
         WaypointService waypoints = services.register(WaypointService.class, new WaypointService(teams, clients, playerSettings));
         services.register(PlaceholderService.class, new PlaceholderService());
         MenuService menus = services.register(MenuService.class, new MenuService());
@@ -150,7 +157,8 @@ public final class HCFPlugin extends JavaPlugin {
                 new CommandBlockListener(),
                 new ProfileListener(profiles, states, pvpProtection, waypoints, threading, playerSettings),
                 new CombatListener(this, combat, antiClean, cooldowns, profiles, states, settings, dtr, teams, lastInventories, playerSettings),
-                new ClaimMovementListener(claims, teams, settings),
+                new LogoutListener(states),
+                new ClaimMovementListener(claims, teams, playerSettings),
                 new ClaimWandListener(claimSelections, claims, teams, economy, settings, threading),
                 new ChatListener(chat, teams, threading),
                 new MenuListener(services.require(MenuService.class)),
@@ -158,6 +166,7 @@ public final class HCFPlugin extends JavaPlugin {
                 new PartnerItemListener(partnerItems),
                 new PvpProtectionListener(pvpProtection),
                 new SettingsGameplayListener(playerSettings),
+                new StatsTrackingListener(profiles),
                 new SotwListener(sotw),
                 new StaffListener(staff, states),
                 glowstone
@@ -236,6 +245,105 @@ public final class HCFPlugin extends JavaPlugin {
         }
         if (getConfig().getInt("koth.cap-time-seconds", 900) <= 0) {
             getLogger().warning("koth.cap-time-seconds must be positive; runtime value will use the default.");
+        }
+        validateWorld("deathban-arena.world");
+        validateWorld("holograms.location.world");
+        validateDuration("timers.logout", 30);
+        validateDuration("timers.home", 10);
+        validateDuration("deathban.default-duration-minutes", 30);
+        validateDuration("sotw.default-minutes", 60);
+        validatePotionEffects("potion-limiter.allowed");
+        validateSounds("sounds");
+        validateShopConfig();
+    }
+
+    private void validateWorld(String path) {
+        String world = getConfig().getString(path);
+        if (world != null && getServer().getWorld(world) == null) {
+            getLogger().warning("Configured world at " + path + " is not loaded: " + world);
+        }
+    }
+
+    private void validateDuration(String path, int fallback) {
+        if (getConfig().contains(path) && getConfig().getInt(path, fallback) <= 0) {
+            getLogger().warning(path + " must be positive; runtime value will use the default.");
+        }
+    }
+
+    private void validatePotionEffects(String path) {
+        for (String name : getConfig().getStringList(path)) {
+            if (PotionEffectType.getByName(name) == null) {
+                getLogger().warning("Invalid potion effect at " + path + ": " + name);
+            }
+        }
+    }
+
+    private void validateSounds(String path) {
+        ConfigurationSection section = getConfig().getConfigurationSection(path);
+        if (section == null) {
+            return;
+        }
+        for (String key : section.getKeys(true)) {
+            if (!section.isString(key)) {
+                continue;
+            }
+            String value = section.getString(key);
+            try {
+                Sound.valueOf(value);
+            } catch (IllegalArgumentException exception) {
+                getLogger().warning("Invalid sound at " + path + "." + key + ": " + value);
+            }
+        }
+    }
+
+    private void validateShopConfig() {
+        File file = new File(getDataFolder(), "shop.yml");
+        if (!file.exists()) {
+            return;
+        }
+        YamlConfiguration shop = YamlConfiguration.loadConfiguration(file);
+        ConfigurationSection categories = shop.getConfigurationSection("categories");
+        if (categories == null) {
+            getLogger().warning("shop.yml is missing a categories section.");
+            return;
+        }
+        for (String category : categories.getKeys(false)) {
+            String base = "categories." + category;
+            validateShopMaterial(shop, base + ".icon");
+            validateShopSlot(shop, base + ".slot", 0, 35);
+            ConfigurationSection items = shop.getConfigurationSection(base + ".items");
+            if (items == null) {
+                continue;
+            }
+            for (String item : items.getKeys(false)) {
+                String itemPath = base + ".items." + item;
+                validateShopMaterial(shop, itemPath + ".material");
+                validateShopSlot(shop, itemPath + ".slot", 0, 53);
+                validateShopPrice(shop, itemPath + ".buy");
+                validateShopPrice(shop, itemPath + ".sell");
+            }
+        }
+    }
+
+    private void validateShopMaterial(YamlConfiguration config, String path) {
+        String value = config.getString(path);
+        if (value != null && Material.matchMaterial(value) == null) {
+            getLogger().warning("Invalid material in shop.yml at " + path + ": " + value);
+        }
+    }
+
+    private void validateShopSlot(YamlConfiguration config, String path, int min, int max) {
+        if (config.contains(path)) {
+            int slot = config.getInt(path);
+            if (slot < min || slot > max) {
+                getLogger().warning("Invalid GUI slot in shop.yml at " + path + ": " + slot + " (allowed " + min + "-" + max + ")");
+            }
+        }
+    }
+
+    private void validateShopPrice(YamlConfiguration config, String path) {
+        if (config.contains(path) && config.getLong(path) < -1L) {
+            getLogger().warning("Invalid price in shop.yml at " + path + ": " + config.getLong(path) + " (use -1 to disable)");
         }
     }
 

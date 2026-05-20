@@ -4,6 +4,7 @@ import com.testrank.hcf.core.api.HCFService;
 import com.testrank.hcf.core.claim.Claim;
 import com.testrank.hcf.core.config.HCFSettings;
 import com.testrank.hcf.core.koth.KothService;
+import com.testrank.hcf.core.settings.PlayerSettingsService;
 import com.testrank.hcf.core.team.Team;
 import com.testrank.hcf.core.team.TeamService;
 import com.testrank.hcf.core.util.Text;
@@ -24,15 +25,17 @@ public final class AntiCleanService implements HCFService {
     private final TeamService teams;
     private final KothService koths;
     private final HCFSettings settings;
+    private final PlayerSettingsService playerSettings;
     private final ConcurrentMap<FightKey, PendingFight> pending = new ConcurrentHashMap<>();
     private final ConcurrentMap<FightKey, ActiveFight> active = new ConcurrentHashMap<>();
     private int taskId = -1;
 
-    public AntiCleanService(Plugin plugin, TeamService teams, KothService koths, HCFSettings settings) {
+    public AntiCleanService(Plugin plugin, TeamService teams, KothService koths, HCFSettings settings, PlayerSettingsService playerSettings) {
         this.plugin = plugin;
         this.teams = teams;
         this.koths = koths;
         this.settings = settings;
+        this.playerSettings = playerSettings;
     }
 
     @Override
@@ -148,7 +151,7 @@ public final class AntiCleanService implements HCFService {
     private void notifyFight(ActiveFight fight, String message) {
         for (Player player : Bukkit.getOnlinePlayers()) {
             UUID side = teams.byPlayer(player.getUniqueId()).map(Team::id).orElse(player.getUniqueId());
-            if (fight.participates(side)) {
+            if (fight.participates(side) && playerSettings.enabled(player.getUniqueId(), "teamfight-statistics")) {
                 player.sendMessage(Text.color(message));
             }
         }

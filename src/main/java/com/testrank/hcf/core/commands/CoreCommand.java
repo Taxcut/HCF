@@ -493,7 +493,17 @@ public final class CoreCommand implements CommandExecutor {
     }
 
     private void logout(CommandSender sender) {
-        sender.sendMessage(color("&8[&cLogout&8] &fDo not move for &c30 seconds &fto safely logout."));
+        Player player = player(sender);
+        int seconds = Math.max(1, plugin.getConfig().getInt("timers.logout", 30));
+        states.startLogout(player.getUniqueId(), seconds * 1000L);
+        player.sendMessage(color("&8[&cLogout&8] &fDo not move or enter combat for &c" + seconds + " seconds &fto safely logout."));
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline() || states.logoutRemaining(player.getUniqueId()) > 0L) {
+                return;
+            }
+            states.cancelLogout(player.getUniqueId());
+            player.kickPlayer(color("&aYou logged out safely."));
+        }, seconds * 20L);
     }
 
     private void leaderboards(CommandSender sender) {

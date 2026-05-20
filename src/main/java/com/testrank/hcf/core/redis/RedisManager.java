@@ -8,19 +8,20 @@ import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.pubsub.RedisPubSubAdapter;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 
-import java.util.Objects;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 public final class RedisManager implements HCFService {
     private final String serverId;
     private final boolean enabled;
     private final RedisClient client;
     private final Map<String, List<Consumer<RedisEnvelope>>> handlers = new ConcurrentHashMap<>();
+    private volatile boolean available;
     private StatefulRedisConnection<String, String> connection;
     private StatefulRedisPubSubConnection<String, String> pubSubConnection;
 
@@ -35,24 +36,30 @@ public final class RedisManager implements HCFService {
         if (!enabled) {
             return;
         }
-        this.connection = client.connect();
-        this.pubSubConnection = client.connectPubSub();
-        this.pubSubConnection.addListener(new RedisPubSubAdapter<>() {
-            @Override
-            public void message(String channel, String message) {
-                List<Consumer<RedisEnvelope>> consumers = handlers.get(channel);
-                if (consumers == null || consumers.isEmpty()) {
-                    return;
+        try {
+            this.connection = client.connect();
+            this.pubSubConnection = client.connectPubSub();
+            this.pubSubConnection.addListener(new RedisPubSubAdapter<>() {
+                @Override
+                public void message(String channel, String message) {
+                    List<Consumer<RedisEnvelope>> consumers = handlers.get(channel);
+                    if (consumers == null || consumers.isEmpty()) {
+                        return;
+                    }
+                    RedisEnvelope envelope = RedisEnvelope.parse(message);
+                    if (serverId.equals(envelope.sourceServer())) {
+                        return;
+                    }
+                    for (Consumer<RedisEnvelope> consumer : consumers) {
+                        consumer.accept(envelope);
+                    }
                 }
-                RedisEnvelope envelope = RedisEnvelope.parse(message);
-                if (serverId.equals(envelope.sourceServer())) {
-                    return;
-                }
-                for (Consumer<RedisEnvelope> consumer : consumers) {
-                    consumer.accept(envelope);
-                }
-            }
-        });
+            });
+            available = true;
+        } catch (RuntimeException exception) {
+            available = false;
+            Logger.getLogger("HCF").warning("Redis is enabled but the connection failed. Redis sync is disabled for this session: " + exception.getMessage());
+        }
     }
 
     public String serverId() {
@@ -60,35 +67,50 @@ public final class RedisManager implements HCFService {
     }
 
     public CompletableFuture<Void> publish(String channel, String payload) {
-        if (!enabled) {
+        if (!available) {
             return CompletableFuture.completedFuture(null);
         }
-        Objects.requireNonNull(connection, "Redis connection has not started");
         RedisAsyncCommands<String, String> commands = connection.async();
-        return commands.publish("hcf:" + channel, serverId + "|" + payload).thenAccept(ignored -> {}).toCompletableFuture();
+        return commands.publish("hcf:" + channel, serverId + "|" + payload).thenAccept(ignored -> {}).toCompletableFuture()
+                .exceptionally(throwable -> {
+                    Logger.getLogger("HCF").warning("Redis publish failed on channel " + channel + ": " + throwable.getMessage());
+                    return null;
+                });
     }
 
     public CompletableFuture<Void> hset(String key, String field, String value) {
-        if (!enabled) {
+        if (!available) {
             return CompletableFuture.completedFuture(null);
         }
-        return connection.async().hset(key, field, value).thenAccept(ignored -> {}).toCompletableFuture();
+        return connection.async().hset(key, field, value).thenAccept(ignored -> {}).toCompletableFuture()
+                .exceptionally(throwable -> {
+                    Logger.getLogger("HCF").warning("Redis hset failed for " + key + ": " + throwable.getMessage());
+                    return null;
+                });
     }
 
     public CompletableFuture<String> hget(String key, String field) {
-        if (!enabled) {
+        if (!available) {
             return CompletableFuture.completedFuture(null);
         }
-        return connection.async().hget(key, field).toCompletableFuture();
+        return connection.async().hget(key, field).toCompletableFuture()
+                .exceptionally(throwable -> {
+                    Logger.getLogger("HCF").warning("Redis hget failed for " + key + ": " + throwable.getMessage());
+                    return null;
+                });
     }
 
     public CompletableFuture<Void> subscribe(String channel, Consumer<RedisEnvelope> consumer) {
-        if (!enabled) {
+        if (!available) {
             return CompletableFuture.completedFuture(null);
         }
         String namespaced = "hcf:" + channel;
         handlers.computeIfAbsent(namespaced, ignored -> new CopyOnWriteArrayList<>()).add(consumer);
-        return pubSubConnection.async().subscribe(namespaced).thenAccept(ignored -> {}).toCompletableFuture();
+        return pubSubConnection.async().subscribe(namespaced).thenAccept(ignored -> {}).toCompletableFuture()
+                .exceptionally(throwable -> {
+                    Logger.getLogger("HCF").warning("Redis subscribe failed for " + channel + ": " + throwable.getMessage());
+                    return null;
+                });
     }
 
     @Override
@@ -105,6 +127,6 @@ public final class RedisManager implements HCFService {
     }
 
     public boolean enabled() {
-        return enabled;
+        return enabled && available;
     }
 }

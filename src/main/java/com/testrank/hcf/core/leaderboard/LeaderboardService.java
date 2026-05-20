@@ -5,15 +5,15 @@ import com.testrank.hcf.core.economy.EconomyService;
 import com.testrank.hcf.core.profile.PlayerStateService;
 import com.testrank.hcf.core.profile.Profile;
 import com.testrank.hcf.core.profile.ProfileService;
-import org.bukkit.Bukkit;
-import org.bukkit.OfflinePlayer;
 
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.ToLongFunction;
 
 public final class LeaderboardService implements HCFService {
@@ -21,12 +21,18 @@ public final class LeaderboardService implements HCFService {
     private final PlayerStateService states;
     private final EconomyService economy;
     private final Map<Category, List<Entry>> cache = new ConcurrentHashMap<>();
+    private final AtomicBoolean rebuilding = new AtomicBoolean();
     private volatile long expiresAt;
 
     public LeaderboardService(ProfileService profiles, PlayerStateService states, EconomyService economy) {
         this.profiles = profiles;
         this.states = states;
         this.economy = economy;
+    }
+
+    @Override
+    public void start() {
+        rebuild();
     }
 
     public List<Entry> top(Category category) {
@@ -37,38 +43,43 @@ public final class LeaderboardService implements HCFService {
     }
 
     public void rebuild() {
-        for (Category category : Category.values()) {
-            if (category == Category.PLAYTIME) {
-                cache.put(category, profiles.cachedProfiles().stream()
-                        .map(profile -> new Entry(profile.uuid(), name(profile.uuid()), states.playtime(profile.uuid())))
-                        .sorted(Comparator.comparingLong(Entry::value).reversed())
-                        .limit(10)
-                        .toList());
-                continue;
-            }
-            cache.put(category, profiles.cachedProfiles().stream()
-                    .map(profile -> new Entry(profile.uuid(), name(profile.uuid()), category.value(profile)))
-                    .filter(entry -> entry.value() > 0L || category == Category.DEATHS)
-                    .sorted(Comparator.comparingLong(Entry::value).reversed())
-                    .limit(10)
-                    .toList());
+        if (!rebuilding.compareAndSet(false, true)) {
+            return;
         }
-        cache.put(Category.KILLSTREAK, states.killstreaks().entrySet().stream()
-                .map(entry -> new Entry(entry.getKey(), name(entry.getKey()), entry.getValue()))
-                .sorted(Comparator.comparingLong(Entry::value).reversed())
-                .limit(10)
-                .toList());
-        cache.put(Category.WEALTH, economy.balances().entrySet().stream()
-                .map(entry -> new Entry(entry.getKey(), name(entry.getKey()), entry.getValue()))
-                .sorted(Comparator.comparingLong(Entry::value).reversed())
-                .limit(10)
-                .toList());
-        expiresAt = System.currentTimeMillis() + 60_000L;
+        profiles.loadAll().whenComplete((loaded, throwable) -> {
+            try {
+                if (throwable != null || loaded == null) {
+                    return;
+                }
+                Map<Category, List<Entry>> rebuilt = new EnumMap<>(Category.class);
+                for (Category category : Category.values()) {
+                    rebuilt.put(category, loaded.stream()
+                            .map(profile -> new Entry(profile.uuid(), name(profile.uuid()), value(category, profile)))
+                            .filter(entry -> entry.value() > 0L || category == Category.DEATHS)
+                            .sorted(Comparator.comparingLong(Entry::value).reversed())
+                            .limit(10)
+                            .toList());
+                }
+                cache.clear();
+                cache.putAll(rebuilt);
+                expiresAt = System.currentTimeMillis() + 60_000L;
+            } finally {
+                rebuilding.set(false);
+            }
+        });
+    }
+
+    private long value(Category category, Profile profile) {
+        return switch (category) {
+            case PLAYTIME -> Math.max(profile.statistic("playtime"), states.playtime(profile.uuid()));
+            case KILLSTREAK -> Math.max(profile.statistic("killstreak"), states.killstreak(profile.uuid()));
+            case WEALTH -> Math.max(profile.statistic("balance"), economy.balance(profile.uuid()));
+            default -> category.value(profile);
+        };
     }
 
     private static String name(UUID uuid) {
-        OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
-        return offline.getName() == null ? uuid.toString().substring(0, 8) : offline.getName();
+        return uuid.toString().substring(0, 8);
     }
 
     public record Entry(UUID uuid, String name, long value) {}

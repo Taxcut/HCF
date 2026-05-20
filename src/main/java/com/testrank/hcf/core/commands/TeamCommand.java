@@ -215,7 +215,7 @@ public final class TeamCommand implements CommandExecutor {
 
     private void manage(Player player) {
         Team team = ownTeam(player);
-        new TeamManageMenu(menus, teams, dtr, team).open(player, menus);
+        new TeamManageMenu(menus, teams, dtr, settings, team).open(player, menus);
     }
 
     private void uninvite(Player player, String[] args) {
