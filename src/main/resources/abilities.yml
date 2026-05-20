@@ -1,0 +1,49 @@
+enabled: true
+defaults:
+  global-cooldown-seconds: 8
+  uses: 1
+items:
+  time-warp:
+    enabled: true
+    material: WATCH
+    name: "&cTime Warp"
+    lore:
+      - "&7Teleport back to where you used"
+      - "&7this item after &c5 seconds&7."
+      - ""
+      - "&cCooldown&7: &f45s"
+    cooldown-seconds: 45
+    uses: 1
+  focus-mode:
+    enabled: true
+    material: EYE_OF_ENDER
+    name: "&cFocus Mode"
+    lore:
+      - "&7Mark your target and empower"
+      - "&7your next few seconds of combat."
+      - ""
+      - "&cCooldown&7: &f60s"
+    cooldown-seconds: 60
+    uses: 1
+  switch-stick:
+    enabled: true
+    material: STICK
+    name: "&cSwitcher"
+    lore:
+      - "&7Swap positions with the player"
+      - "&7you hit within range."
+      - ""
+      - "&cCooldown&7: &f75s"
+    cooldown-seconds: 75
+    uses: 1
+  anti-trap-star:
+    enabled: true
+    material: NETHER_STAR
+    name: "&cAnti Trap Star"
+    lore:
+      - "&7Disable trap interactions around"
+      - "&7your target for a short window."
+      - ""
+      - "&cCooldown&7: &f90s"
+    cooldown-seconds: 90
+    uses: 1

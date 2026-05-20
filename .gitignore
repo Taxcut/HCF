@@ -1,0 +1,7 @@
+.gradle/
+.gradle-bootstrap/
+build/
+target/
+out/
+*.iml
+.idea/

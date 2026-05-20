@@ -1,0 +1,14 @@
+scheduler:
+  enabled: true
+  timezone: "America/Phoenix"
+rotation:
+  - type: KOTH
+    target: "Citadel"
+    every-minutes: 180
+  - type: GLOWSTONE
+    target: "Glowstone Mountain"
+    every-minutes: 20
+messages:
+  start: "&8[&cEvent&8] &f%event% has started."
+  end: "&8[&cEvent&8] &f%event% has ended."
+  captured: "&8[&cEvent&8] &c%team% &fhas captured &c%event%&f."

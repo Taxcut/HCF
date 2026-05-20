@@ -1,0 +1,23 @@
+cap-time-seconds: 900
+scoreboard:
+  show-coordinates: true
+  label-color: "&c&l"
+koths:
+  Citadel:
+    enabled: true
+    world: world
+    min-x: 100
+    min-z: 100
+    max-x: 120
+    max-z: 120
+    y: 80
+    cap-time-seconds: 900
+  Nether:
+    enabled: true
+    world: world_nether
+    min-x: 100
+    min-z: 100
+    max-x: 120
+    max-z: 120
+    y: 80
+    cap-time-seconds: 900

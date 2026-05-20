@@ -1,0 +1,16 @@
+max-members: 25
+max-claims: 6
+dtr-per-member: 1.01
+max-dtr: 6.01
+regen-per-minute: 0.1
+regen-delay-minutes: 30
+invite-expire-seconds: 60
+claiming:
+  price-per-block: 2.0
+  minimum-price: 250
+  minimum-size: 5
+  maximum-size: 150
+chat:
+  format: "&6[&c%team%&6] %ftop_marker%%particle_rank% %particle_rank_color%%player%&7: &f%message%"
+messages:
+  created: "&eFaction &c%team% &ehas been &acreated by &f%player%"

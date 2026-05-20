@@ -1,0 +1,28 @@
+enabled: true
+points-to-win: 300
+cap-time-seconds: 30
+points-per-capture: 25
+captures:
+  red:
+    world: world
+    x: 250
+    y: 80
+    z: 250
+  blue:
+    world: world
+    x: -250
+    y: 80
+    z: 250
+  green:
+    world: world
+    x: 250
+    y: 80
+    z: -250
+  yellow:
+    world: world
+    x: -250
+    y: 80
+    z: -250
+rewards:
+  winner:
+    - "give %player% diamond 16"

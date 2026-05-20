@@ -1,0 +1,43 @@
+enabled: true
+default-cooldown-minutes: 60
+kits:
+  starter:
+    enabled: true
+    display: "&cStarter"
+    cooldown-minutes: 30
+    items:
+      - "DIAMOND_SWORD 1 sharpness:1 unbreaking:3"
+      - "BOW 1 power:1"
+      - "ARROW 32"
+  archer:
+    enabled: true
+    display: "&cArcher"
+    armor:
+      helmet: "LEATHER_HELMET 1"
+      chestplate: "LEATHER_CHESTPLATE 1"
+      leggings: "LEATHER_LEGGINGS 1"
+      boots: "LEATHER_BOOTS 1"
+  bard:
+    enabled: true
+    display: "&cBard"
+    armor:
+      helmet: "GOLD_HELMET 1"
+      chestplate: "GOLD_CHESTPLATE 1"
+      leggings: "GOLD_LEGGINGS 1"
+      boots: "GOLD_BOOTS 1"
+  rogue:
+    enabled: true
+    display: "&cRogue"
+    armor:
+      helmet: "CHAINMAIL_HELMET 1"
+      chestplate: "CHAINMAIL_CHESTPLATE 1"
+      leggings: "CHAINMAIL_LEGGINGS 1"
+      boots: "CHAINMAIL_BOOTS 1"
+  ghost:
+    enabled: true
+    display: "&cGhost"
+    armor:
+      helmet: "IRON_HELMET 1"
+      chestplate: "IRON_CHESTPLATE 1"
+      leggings: "IRON_LEGGINGS 1"
+      boots: "IRON_BOOTS 1"

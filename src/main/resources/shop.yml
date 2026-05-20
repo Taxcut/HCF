@@ -1,0 +1,162 @@
+categories:
+  spawners:
+    name: "Spawner Shop"
+    icon: MOB_SPAWNER
+    slot: 10
+    items:
+      zombie:
+        material: MOB_SPAWNER
+        name: "Zombie Spawner"
+        amount: 1
+        buy: 25000
+        sell: 10000
+        slot: 10
+  blocks:
+    name: "Block Shop"
+    icon: BRICK
+    slot: 11
+    items:
+      stone:
+        material: STONE
+        name: "Stone"
+        amount: 64
+        buy: 64
+        sell: 16
+        slot: 10
+      glass:
+        material: GLASS
+        name: "Glass"
+        amount: 64
+        buy: 96
+        sell: 24
+        slot: 11
+      obsidian:
+        material: OBSIDIAN
+        name: "Obsidian"
+        amount: 16
+        buy: 800
+        sell: 240
+        slot: 12
+  farming:
+    name: "Farming Shop"
+    icon: WHEAT
+    slot: 12
+    items:
+      sugarcane:
+        material: SUGAR_CANE
+        name: "Sugar Cane"
+        amount: 64
+        buy: 160
+        sell: 48
+        slot: 10
+      cactus:
+        material: CACTUS
+        name: "Cactus"
+        amount: 64
+        buy: 160
+        sell: 48
+        slot: 11
+      seeds:
+        material: SEEDS
+        name: "Seeds"
+        amount: 16
+        buy: 40
+        sell: 8
+        slot: 12
+  ores:
+    name: "Ore Shop"
+    icon: DIAMOND_ORE
+    slot: 13
+    items:
+      iron:
+        material: IRON_INGOT
+        name: "Iron Ingot"
+        amount: 16
+        buy: 240
+        sell: 80
+        slot: 10
+      gold:
+        material: GOLD_INGOT
+        name: "Gold Ingot"
+        amount: 16
+        buy: 320
+        sell: 120
+        slot: 11
+      diamond:
+        material: DIAMOND
+        name: "Diamond"
+        amount: 8
+        buy: 800
+        sell: 280
+        slot: 12
+      emerald:
+        material: EMERALD
+        name: "Emerald"
+        amount: 8
+        buy: 900
+        sell: 300
+        slot: 13
+  food:
+    name: "Food Shop"
+    icon: COOKED_BEEF
+    slot: 14
+    items:
+      steak:
+        material: COOKED_BEEF
+        name: "Steak"
+        amount: 64
+        buy: 256
+        sell: 64
+        slot: 10
+      golden_carrot:
+        material: GOLDEN_CARROT
+        name: "Golden Carrot"
+        amount: 16
+        buy: 480
+        sell: 120
+        slot: 11
+  misc:
+    name: "Misc Shop"
+    icon: ENDER_PEARL
+    slot: 15
+    items:
+      enderpearl:
+        material: ENDER_PEARL
+        name: "Ender Pearl"
+        amount: 16
+        buy: 1200
+        sell: 300
+        slot: 10
+      glowstone:
+        material: GLOWSTONE_DUST
+        name: "Glowstone Dust"
+        amount: 64
+        buy: 320
+        sell: 96
+        slot: 11
+      gunpowder:
+        material: SULPHUR
+        name: "Gunpowder"
+        amount: 64
+        buy: 640
+        sell: 180
+        slot: 12
+  decorative:
+    name: "Decorative Shop"
+    icon: RED_ROSE
+    slot: 16
+    items:
+      red_flower:
+        material: RED_ROSE
+        name: "Red Flower"
+        amount: 16
+        buy: 40
+        sell: 8
+        slot: 10
+      bookshelf:
+        material: BOOKSHELF
+        name: "Bookshelf"
+        amount: 16
+        buy: 240
+        sell: 64
+        slot: 11

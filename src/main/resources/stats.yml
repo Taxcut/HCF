@@ -1,0 +1,13 @@
+enabled: true
+track:
+  kills: true
+  deaths: true
+  assists: true
+  killstreak: true
+  playtime: true
+display:
+  title: "&e%player%'s Statistics"
+  line: "&c%stat%&7: &f%value%"
+leaderboards:
+  broadcast-surpass: true
+  top-size: 10

@@ -1,0 +1,242 @@
+name: HCF
+main: com.testrank.hcf.core.bootstrap.HCFPlugin
+version: ${version}
+author: TestRank
+softdepend:
+  - LuckPerms
+  - PlaceholderAPI
+  - packetevents
+  - Apollo-Bukkit
+commands:
+  help:
+    description: HCF help menu.
+  report:
+    description: Report a player to staff.
+  request:
+    description: Request staff assistance.
+  gamemode:
+    description: Change gamemode.
+    aliases: [gm]
+  broadcast:
+    description: Broadcast an alert.
+    aliases: [bc]
+  clearchat:
+    description: Clear chat.
+  heal:
+    description: Heal a player.
+  feed:
+    description: Feed a player.
+  kill:
+    description: Kill a player.
+  invsee:
+    description: Inspect an inventory.
+  message:
+    description: Send a private message.
+    aliases: [msg, tell, w]
+  ping:
+    description: Check ping.
+  tp:
+    description: Teleport to a player.
+  tphere:
+    description: Teleport a player to you.
+  tplocation:
+    description: Teleport to coordinates.
+  tpall:
+    description: Teleport all players.
+  more:
+    description: Fill held stack.
+  world:
+    description: Teleport to a world.
+  top:
+    description: Teleport to the highest block.
+  ignore:
+    description: Ignore a player.
+  rename:
+    description: Rename held item.
+  repair:
+    description: Repair held item.
+  clear:
+    description: Clear an inventory.
+  balance:
+    description: Show balance.
+    aliases: [bal, money]
+  setbal:
+    description: Set a player balance.
+  cobble:
+    description: Toggle cobble pickup.
+  basetoken:
+    description: Manage base tokens.
+  falltraptoken:
+    description: Manage falltrap tokens.
+  crowbar:
+    description: Give a crowbar.
+  ecomanage:
+    description: Manage economy balances.
+  enchant:
+    description: Enchant held item.
+  editmenu:
+    description: Open menu editor.
+  endplayers:
+    description: Count End players.
+  netherplayers:
+    description: Count Nether players.
+  focus:
+    description: Focus a player.
+  unfocus:
+    description: Clear focus.
+  near:
+    description: List nearby players.
+  lives:
+    description: Show lives.
+  lff:
+    description: Looking for faction broadcast.
+  livesmanage:
+    description: Manage lives.
+  logout:
+    description: Safe logout timer.
+  leaderboards:
+    description: Show leaderboards.
+  leaderboard:
+    description: Show leaderboards.
+  managebasetoken:
+    description: Admin base token management.
+  managefalltraptoken:
+    description: Admin falltrap token management.
+  playtime:
+    description: Show playtime.
+  redeem:
+    description: Redeem rewards.
+  pvp:
+    description: PvP timer control.
+  resetredeem:
+    description: Reset redeem status.
+  reclaim:
+    description: Reclaim rewards.
+  resetreclaim:
+    description: Reset reclaim status.
+  lastinv:
+    description: View last inventory.
+  sendbasetoken:
+    description: Send a base token.
+  sendfalltraptoken:
+    description: Send a falltrap token.
+  setend:
+    description: Set End exit.
+  settings:
+    description: Open settings.
+  spawn:
+    description: Teleport to spawn.
+  staff:
+    description: Toggle staff mode.
+    aliases: [h]
+  vanish:
+    description: Toggle vanish.
+    aliases: [v]
+  staffchat:
+    description: Staff chat.
+    aliases: [sc]
+  telllocation:
+    description: Send your location.
+    aliases: [tl]
+  stats:
+    description: Show player stats.
+  strengthnerf:
+    description: Toggle strength nerf.
+  togglepm:
+    description: Toggle private messages.
+  togglecobble:
+    description: Toggle cobble pickup.
+  togglesounds:
+    description: Toggle sounds.
+  deathban:
+    description: Deathban a player.
+  pay:
+    description: Pay a player.
+  killtag:
+    description: Check combat tag.
+  schedule:
+    description: Show event schedule.
+  timer:
+    description: Scoreboard timer administration.
+  customtimer:
+    description: Create a custom timer.
+  keyall:
+    description: Give keys to all players.
+  reportsmenu:
+    description: Open reports menu.
+  requestsmenu:
+    description: Open requests menu.
+  staffbuild:
+    description: Toggle staff build.
+  spawner:
+    description: Give a spawner.
+  killstreak:
+    description: Show killstreak.
+  kit:
+    description: Claim a kit.
+  sotw:
+    description: SOTW administration.
+  eotw:
+    description: EOTW administration.
+  conquest:
+    description: Start conquest.
+  koth:
+    description: KOTH administration.
+  ktk:
+    description: Start Kill The King.
+  purge:
+    description: Start purge event.
+  citadel:
+    description: Start citadel event.
+  mountain:
+    description: Start mountain event.
+  systemteam:
+    description: Show system teams.
+  changelog:
+    description: Show recent changes.
+    aliases: [changelogs]
+  panic:
+    description: Alert staff quickly.
+  discord:
+    description: Show Discord link.
+  teamspeak:
+    description: Show TeamSpeak link.
+    aliases: [ts]
+  twitter:
+    description: Show Twitter link.
+  store:
+    description: Show store link.
+  social:
+    description: Show social links.
+  website:
+    description: Show website link.
+  media:
+    description: Show media information.
+  giveaway:
+    description: Enter or draw giveaways.
+  shop:
+    description: Open the HCF shop.
+  chatcolor:
+    description: Open chat color selector.
+    aliases: [chatcolors]
+  team:
+    description: Team and faction commands.
+    aliases: [f, faction]
+  freeze:
+    description: Freeze a player.
+  hcf:
+    description: Core administration.
+  claimwand:
+    description: Get the claim wand.
+    aliases: [wand]
+  claim:
+    description: Create a claim from your current selection.
+  claimhere:
+    description: Create a small admin claim around you.
+  partner:
+    description: Give a partner item.
+permissions:
+  hcf.staff:
+    default: op
+  hcf.admin:
+    default: op
