@@ -3,6 +3,9 @@
 server:
   id: "hcf-01"
   network-name: "HCF"
+  # When true, the core refuses to boot without durable MongoDB persistence enabled.
+  # Keep false for local test servers.
+  production-mode: false
 
 spawn:
   world: world
@@ -47,7 +50,8 @@ deathban:
   lives: 3
 
 deathban-arena:
-  enabled: true
+  # Arena revive flow is intentionally disabled until a real arena region/reward flow is configured.
+  enabled: false
   world: world
   x: 0.5
   y: 80.0
@@ -91,10 +95,12 @@ conquest:
   cap-time-seconds: 30
 
 kill-the-king:
+  enabled: false
   reward-commands:
     - "give %player% diamond 16"
 
 purge:
+  enabled: false
   duration-minutes: 60
   deathban-disabled: true
 

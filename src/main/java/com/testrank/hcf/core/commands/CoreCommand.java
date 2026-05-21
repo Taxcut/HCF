@@ -762,6 +762,11 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(color("&8[&cSystem&8] &fSystem teams: &cSafezone, Warzone, Roads, Events"));
             return;
         }
+        if ((name.equals("purge") && !plugin.getConfig().getBoolean("purge.enabled", false))
+                || (name.equals("ktk") && !plugin.getConfig().getBoolean("kill-the-king.enabled", false))) {
+            sender.sendMessage(color("&8[&cEvent&8] &c" + name.toUpperCase(Locale.ROOT) + " is disabled in config because it is not production-ready."));
+            return;
+        }
         HCFEventType type = switch (name) {
             case "conquest" -> HCFEventType.CONQUEST;
             case "citadel" -> HCFEventType.CITADEL;

@@ -5,6 +5,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import java.util.List;
 
 public record HCFSettings(
+        boolean productionMode,
         boolean mongoEnabled,
         String mongoUri,
         String mongoDatabase,
@@ -80,6 +81,7 @@ public record HCFSettings(
 
     public static HCFSettings from(FileConfiguration config) {
         return new HCFSettings(
+                config.getBoolean("server.production-mode", false),
                 config.getBoolean("mongo.enabled", false),
                 config.getString("mongo.uri", "mongodb://127.0.0.1:27017"),
                 config.getString("mongo.database", "hcf"),

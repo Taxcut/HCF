@@ -13,6 +13,10 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
@@ -20,8 +24,10 @@ public final class RedisManager implements HCFService {
     private final String serverId;
     private final boolean enabled;
     private final RedisClient client;
+    private final ExecutorService connector;
     private final Map<String, List<Consumer<RedisEnvelope>>> handlers = new ConcurrentHashMap<>();
     private volatile boolean available;
+    private volatile boolean closing;
     private StatefulRedisConnection<String, String> connection;
     private StatefulRedisPubSubConnection<String, String> pubSubConnection;
 
@@ -29,6 +35,7 @@ public final class RedisManager implements HCFService {
         this.serverId = settings.serverId();
         this.enabled = settings.redisEnabled();
         this.client = enabled ? RedisClient.create(settings.redisUri()) : null;
+        this.connector = enabled ? Executors.newSingleThreadExecutor(daemon("hcf-redis-connect")) : null;
     }
 
     @Override
@@ -36,6 +43,16 @@ public final class RedisManager implements HCFService {
         if (!enabled) {
             return;
         }
+        CompletableFuture.runAsync(this::connect, connector)
+                .orTimeout(5, TimeUnit.SECONDS)
+                .exceptionally(throwable -> {
+                    available = false;
+                    Logger.getLogger("HCF").warning("Redis connection did not complete within 5 seconds. Redis sync is disabled unless it connects later.");
+                    return null;
+                });
+    }
+
+    private void connect() {
         try {
             this.connection = client.connect();
             this.pubSubConnection = client.connectPubSub();
@@ -55,7 +72,18 @@ public final class RedisManager implements HCFService {
                     }
                 }
             });
+            if (closing) {
+                close();
+                return;
+            }
             available = true;
+            for (String channel : handlers.keySet()) {
+                pubSubConnection.async().subscribe(channel).exceptionally(throwable -> {
+                    Logger.getLogger("HCF").warning("Redis deferred subscribe failed for " + channel + ": " + throwable.getMessage());
+                    return null;
+                });
+            }
+            Logger.getLogger("HCF").info("Redis connection established.");
         } catch (RuntimeException exception) {
             available = false;
             Logger.getLogger("HCF").warning("Redis is enabled but the connection failed. Redis sync is disabled for this session: " + exception.getMessage());
@@ -109,11 +137,11 @@ public final class RedisManager implements HCFService {
     }
 
     public CompletableFuture<Void> subscribe(String channel, Consumer<RedisEnvelope> consumer) {
-        if (!available) {
-            return CompletableFuture.completedFuture(null);
-        }
         String namespaced = "hcf:" + channel;
         handlers.computeIfAbsent(namespaced, ignored -> new CopyOnWriteArrayList<>()).add(consumer);
+        if (!available || pubSubConnection == null) {
+            return CompletableFuture.completedFuture(null);
+        }
         return pubSubConnection.async().subscribe(namespaced).thenAccept(ignored -> {}).toCompletableFuture()
                 .exceptionally(throwable -> {
                     Logger.getLogger("HCF").warning("Redis subscribe failed for " + channel + ": " + throwable.getMessage());
@@ -123,6 +151,7 @@ public final class RedisManager implements HCFService {
 
     @Override
     public void close() {
+        closing = true;
         if (pubSubConnection != null) {
             pubSubConnection.close();
         }
@@ -132,9 +161,20 @@ public final class RedisManager implements HCFService {
         if (client != null) {
             client.shutdown();
         }
+        if (connector != null) {
+            connector.shutdownNow();
+        }
     }
 
     public boolean enabled() {
         return enabled && available;
+    }
+
+    private static ThreadFactory daemon(String name) {
+        return runnable -> {
+            Thread thread = new Thread(runnable, name);
+            thread.setDaemon(true);
+            return thread;
+        };
     }
 }

@@ -106,6 +106,11 @@ public final class HCFPlugin extends JavaPlugin {
         saveBundledResource("stats.yml");
         HCFSettings settings = HCFSettings.from(getConfig());
         validateConfig();
+        if (settings.productionMode() && !settings.mongoEnabled()) {
+            getLogger().severe("server.production-mode is true but mongo.enabled is false. Refusing to boot with memory-only persistence.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         logCompatibility(settings);
         services = new ServiceRegistry();
 
@@ -184,7 +189,7 @@ public final class HCFPlugin extends JavaPlugin {
         command("team").setTabCompleter(teamCommand);
         command("staff").setExecutor(new StaffCommand(staff));
         command("freeze").setExecutor(new FreezeCommand(staff));
-        HCFCommand adminCommand = new HCFCommand(claims, claimSelections, teams, partnerItems, koths, eotw, sotw, globalTimers, threading);
+        HCFCommand adminCommand = new HCFCommand(this, claims, claimSelections, teams, partnerItems, koths, eotw, sotw, globalTimers, threading);
         CoreCommand coreCommand = new CoreCommand(this, profiles, states, economy, staff, reports, lastInventories, teams, claims, dtr, combat, pvpProtection, chat, events, koths, sotw, eotw, globalTimers, threading, menus, playerSettings, shop, leaderboards, particleIntel);
         registerAdminCommand("hcf", adminCommand);
         registerAdminCommand("claimwand", adminCommand);
@@ -263,6 +268,9 @@ public final class HCFPlugin extends JavaPlugin {
             getLogger().warning("koth.cap-time-seconds must be positive; runtime value will use the default.");
         }
         validateWorld("deathban-arena.world");
+        if (getConfig().getBoolean("deathban-arena.enabled", false)) {
+            getLogger().warning("deathban-arena.enabled is true, but arena revive gameplay is not fully wired. Keep disabled for production unless you add the arena flow.");
+        }
         validateWorld("holograms.location.world");
         validateDuration("timers.logout", 30);
         validateDuration("timers.home", 10);
@@ -280,6 +288,7 @@ public final class HCFPlugin extends JavaPlugin {
     private void logCompatibility(HCFSettings settings) {
         getLogger().info("HCF legacy runtime: Spigot/Bukkit " + getServer().getBukkitVersion() + ", Java " + System.getProperty("java.version") + ".");
         getLogger().info("This build targets 1.7/1.8 server APIs but requires a Java 21-capable custom Spigot/runtime.");
+        getLogger().info("Production mode: " + settings.productionMode() + ".");
         if (!settings.mongoEnabled()) {
             getLogger().info("MongoDB is disabled; repositories will use in-memory local testing storage where available.");
         } else {
@@ -289,6 +298,22 @@ public final class HCFPlugin extends JavaPlugin {
             getLogger().info("Redis is disabled; cross-server sync and Particle intel publishing are disabled for this session.");
         } else {
             getLogger().warning("Redis is enabled. If Redis is unreachable, sync will fail soft and stay disabled for this session.");
+        }
+    }
+
+    public void reloadRuntimeConfigs() {
+        reloadConfig();
+        saveBundledResource("abilities.yml");
+        saveBundledResource("conquest.yml");
+        saveBundledResource("events.yml");
+        saveBundledResource("factions.yml");
+        saveBundledResource("kits.yml");
+        saveBundledResource("koths.yml");
+        saveBundledResource("shop.yml");
+        saveBundledResource("stats.yml");
+        validateConfig();
+        if (services != null) {
+            services.require(PartnerItemService.class).reload();
         }
     }
 

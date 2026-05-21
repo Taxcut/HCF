@@ -11,6 +11,7 @@ import com.testrank.hcf.core.team.TeamService;
 import com.testrank.hcf.core.threading.Threading;
 import com.testrank.hcf.core.timer.GlobalTimerService;
 import com.testrank.hcf.core.util.Text;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -26,6 +27,7 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
     private static final List<String> HCF_SUBCOMMANDS = List.of("claimwand", "claim", "claimhere", "partner", "koth", "sotw", "eotw", "timer");
     private static final List<String> CLAIM_TYPES = Arrays.stream(ClaimType.values()).map(type -> type.name().toLowerCase(Locale.ROOT)).toList();
 
+    private final Plugin plugin;
     private final ClaimService claims;
     private final ClaimSelectionService selections;
     private final TeamService teams;
@@ -36,8 +38,9 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
     private final GlobalTimerService globalTimers;
     private final Threading threading;
 
-    public HCFCommand(ClaimService claims, ClaimSelectionService selections, TeamService teams, PartnerItemService partnerItems,
+    public HCFCommand(Plugin plugin, ClaimService claims, ClaimSelectionService selections, TeamService teams, PartnerItemService partnerItems,
                       KothService koths, EotwService eotw, SotwService sotw, GlobalTimerService globalTimers, Threading threading) {
+        this.plugin = plugin;
         this.claims = claims;
         this.selections = selections;
         this.teams = teams;
@@ -103,7 +106,9 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
         String name = command.getName().toLowerCase(Locale.ROOT);
         if (name.equals("hcf")) {
             if (args.length == 1) {
-                return filter(HCF_SUBCOMMANDS, args[0]);
+                ArrayList<String> options = new ArrayList<>(HCF_SUBCOMMANDS);
+                options.add("reload");
+                return filter(options, args[0]);
             }
             String[] shifted = Arrays.copyOfRange(args, 1, args.length);
             return completeDirect(args[0].toLowerCase(Locale.ROOT), shifted);
@@ -115,6 +120,7 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
         String sub = args[0].toLowerCase(Locale.ROOT);
         String[] rest = Arrays.copyOfRange(args, 1, args.length);
         return switch (sub) {
+            case "reload" -> reload(player);
             case "wand", "claimwand" -> claimWand(player);
             case "claim" -> claim(player, rest);
             case "claimhere" -> claimHere(player);
@@ -140,6 +146,18 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
                     threading.runSync(() -> player.sendMessage(Text.color("&8[&cHCF&8] &c" + rootMessage(throwable))));
                     return null;
                 });
+        return true;
+    }
+
+    private boolean reload(Player player) {
+        if (plugin instanceof com.testrank.hcf.core.bootstrap.HCFPlugin hcfPlugin) {
+            hcfPlugin.reloadRuntimeConfigs();
+            player.sendMessage(Text.color("&8[&cHCF&8] &fReloaded config files and dynamic ability definitions."));
+            player.sendMessage(Text.color("&8[&cHCF&8] &7Some constructor-level settings still require a restart to fully apply."));
+        } else {
+            plugin.reloadConfig();
+            player.sendMessage(Text.color("&8[&cHCF&8] &fReloaded Bukkit config."));
+        }
         return true;
     }
 
@@ -263,6 +281,7 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(Text.color("&4/sotw <minutes> &8- &7Start SOTW timer"));
         player.sendMessage(Text.color("&c/eotw <true|false> &8- &fToggle EOTW"));
         player.sendMessage(Text.color("&4/timer <name> <minutes> &8- &7Create a scoreboard timer"));
+        player.sendMessage(Text.color("&c/hcf reload &8- &fReload config files"));
         player.sendMessage(Text.color("&8&m--------------------------------------------------"));
     }
 

@@ -35,6 +35,11 @@ public final class PartnerItemService implements HCFService {
 
     @Override
     public void start() {
+        reload();
+    }
+
+    public void reload() {
+        definitions.clear();
         registerDefaults();
         loadConfiguredItems();
     }
