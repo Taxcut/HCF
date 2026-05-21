@@ -41,6 +41,7 @@ public final class TeamRepository {
                 .append("rally", encodeLocation(team.rally()))
                 .append("focused", team.focused() == null ? null : team.focused().toString())
                 .append("frozen", team.frozen())
+                .append("frozenUntil", team.frozenUntil())
                 .append("claimLocked", team.claimLocked())
                 .append("regenPaused", team.regenPaused())
                 .append("friendlyFire", team.friendlyFire())
@@ -98,6 +99,8 @@ public final class TeamRepository {
             team.focused(UUID.fromString(focused));
         }
         team.frozen(document.getBoolean("frozen", false));
+        Number frozenUntil = document.get("frozenUntil", Number.class);
+        team.frozenUntil(frozenUntil == null ? 0L : frozenUntil.longValue());
         team.claimLocked(document.getBoolean("claimLocked", false));
         team.regenPaused(document.getBoolean("regenPaused", false));
         team.friendlyFire(document.getBoolean("friendlyFire", false));

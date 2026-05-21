@@ -21,7 +21,7 @@ Java 8 would require removing records, switch expressions, pattern matching, `Li
 language/API usage across the codebase.
 
 ```powershell
-./gradlew shadowJar
+./gradlew clean shadowJar test
 ```
 
 The deployable plugin jar is written to:
@@ -33,13 +33,19 @@ build/libs/hcf-1.0.jar
 ## Implemented Systems
 
 - Async MongoDB repositories for profiles, teams, claims, with startup loading and indexes.
+- Production mode gate: `server.production-mode=true` requires MongoDB to be enabled and reachable before gameplay systems enable.
 - Lettuce Redis async commands plus pub/sub dirty sync for profiles and teams.
-- Team lifecycle, invites, join/leave, roles, HQ, focus, logs, DTR death penalties, DTR freeze and regen.
-- Chunk-indexed claim engine with admin wand selection and claim creation.
+- Team lifecycle, invites, join/leave, roles, HQ, focus, logs, DTR death penalties, faction DTR broadcasts, persistent DTR freeze and regen.
+- Chunk-indexed claim engine with faction balance purchases, world/spawn/size/overlap validation, `/f unclaim`, `/f unclaimall`, and admin selection.
 - Combat tags, last-hit tracking, pearl/gapple cooldowns, PvP timer protection, SOTW protection.
+- Deathbans, lives, `/revive`, and `/deathban check/remove` for staff recovery workflows.
 - KOTH capture loop tied to claim ownership, with event scoring and broadcast.
 - Partner item registry with persistent metadata, cooldowns, item generation, and potion effects.
 - Staff mode, vanish, freeze, random teleport, inventory inspect, and reports.
-- Team/ally/staff chat routing with async-to-main-thread safety.
+- Team/ally/staff chat routing, private messages/replies, ignore toggles, social spy, mute chat, and slow chat with async-to-main-thread safety.
 - Scoreboard, tab, nametag, waypoint, Lunar/client compatibility facades, and PacketEvents rate-limit boundary.
 - Inventory menu framework with buttons, item builders, state tracking, and pagination.
+
+## Release Notes
+
+See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before deploying to the live HCF server.

@@ -25,7 +25,7 @@ public final class ChatListener implements Listener {
     public void onChat(AsyncPlayerChatEvent event) {
         if (!chat.canChat(event.getPlayer())) {
             event.setCancelled(true);
-            threading.runSync(() -> event.getPlayer().sendMessage(Text.color("&cChat is slowed right now.")));
+            threading.runSync(() -> event.getPlayer().sendMessage(Text.color(chat.muted() ? "&cChat is currently muted." : "&cChat is slowed right now.")));
             return;
         }
         String message = event.getMessage();

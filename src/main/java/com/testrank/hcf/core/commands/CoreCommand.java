@@ -35,6 +35,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -63,7 +64,7 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
     private static final List<String> PLAYER_TARGET_COMMANDS = List.of(
             "heal", "feed", "kill", "invsee", "message", "ping", "tp", "tphere", "ignore", "clear", "balance",
             "pay", "lives", "playtime", "lastinv", "telllocation", "stats", "deathban", "killtag", "killstreak",
-            "livesmanage", "ecomanage", "setbal"
+            "livesmanage", "ecomanage", "setbal", "revive", "reply"
     );
 
     private final Plugin plugin;
@@ -91,6 +92,8 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
     private final LeaderboardService leaderboardService;
     private final ParticleIntelService intel;
     private final Set<UUID> giveawayEntries = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> socialSpy = ConcurrentHashMap.newKeySet();
+    private final java.util.Map<UUID, UUID> replyTargets = new ConcurrentHashMap<>();
     private Location spawn;
     private Location endExit;
 
@@ -143,8 +146,10 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
                 case "kill" -> kill(sender, args);
                 case "invsee" -> invsee(sender, args);
                 case "message", "msg", "tell", "w" -> message(sender, args);
+                case "reply", "r" -> reply(sender, args);
                 case "ping" -> ping(sender, args);
-                case "tp" -> tp(sender, args);
+                case "coords" -> coords(sender);
+                case "tp", "teleport" -> tp(sender, args);
                 case "tphere" -> tphere(sender, args);
                 case "tplocation" -> tplocation(sender, args);
                 case "tpall" -> tpall(sender);
@@ -152,6 +157,7 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
                 case "world" -> world(sender, args);
                 case "top" -> top(sender);
                 case "ignore" -> ignore(sender, args);
+                case "unignore" -> unignore(sender, args);
                 case "rename" -> rename(sender, args);
                 case "repair" -> repair(sender);
                 case "clear" -> clear(sender, args);
@@ -161,11 +167,14 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
                 case "cobble", "togglecobble" -> toggleCobble(sender);
                 case "togglesounds" -> toggleSounds(sender);
                 case "togglepm" -> togglePm(sender);
+                case "toggletells", "togglemessages" -> togglePm(sender);
                 case "basetoken", "falltraptoken", "managebasetoken", "managefalltraptoken", "sendbasetoken", "sendfalltraptoken" -> tokens(sender, name, args);
                 case "crowbar" -> giveNamed(sender, Material.TRIPWIRE_HOOK, "&cCrowbar", 1);
                 case "ecomanage" -> ecomanage(sender, args);
                 case "enchant" -> enchant(sender, args);
                 case "settings" -> settings(sender);
+                case "list" -> list(sender);
+                case "rules" -> rules(sender);
                 case "editmenu", "reportsmenu", "requestsmenu" -> menu(sender, name);
                 case "endplayers", "netherplayers" -> worldPlayers(sender, name.startsWith("end") ? "world_the_end" : "world_nether");
                 case "focus", "unfocus" -> focus(sender, name, args);
@@ -180,12 +189,18 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
                 case "lastinv" -> lastinv(sender, args);
                 case "setend" -> setend(sender);
                 case "spawn" -> spawn(sender);
+                case "setspawn" -> setspawn(sender);
                 case "vanish" -> vanish(sender);
                 case "staffchat" -> staffchat(sender, args);
+                case "socialspy" -> socialSpy(sender);
+                case "mutechat" -> muteChat(sender);
+                case "slowchat" -> slowChat(sender, args);
+                case "enderchest", "ec" -> enderChest(sender, args);
                 case "telllocation" -> tellLocation(sender, args);
                 case "stats" -> stats(sender, args);
                 case "strengthnerf" -> strengthNerf(sender);
                 case "deathban" -> deathban(sender, args);
+                case "revive" -> revive(sender, args);
                 case "killtag" -> killtag(sender, args);
                 case "schedule" -> schedule(sender);
                 case "customtimer" -> customTimer(sender, args);
@@ -224,6 +239,8 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
                 case "world" -> filter(Bukkit.getWorlds().stream().map(World::getName).toList(), args[0]);
                 case "giveaway" -> filter(List.of("draw"), args[0]);
                 case "customtimer" -> filter(List.of("SOTW_Timer", "Sale_Timer", "Key_All"), args[0]);
+                case "deathban" -> filter(List.of("check", "remove"), args[0]);
+                case "slowchat" -> filter(List.of("off", "0", "3", "5", "10", "30"), args[0]);
                 case "redeem", "reclaim", "resetredeem", "resetreclaim", "cobble", "togglecobble", "togglesounds", "togglepm" -> List.of();
                 default -> PLAYER_TARGET_COMMANDS.contains(name) ? filter(onlinePlayers(), args[0]) : List.of();
             };
@@ -233,7 +250,8 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
                 case "gamemode" -> filter(onlinePlayers(), args[1]);
                 case "livesmanage" -> filter(List.of("1", "2", "3", "5", "10"), args[1]);
                 case "ecomanage" -> filter(List.of("set", "add"), args[0]).isEmpty() ? List.of() : filter(onlinePlayers(), args[1]);
-                case "pay", "setbal", "deathban" -> filter(List.of("1", "5", "10", "30", "60"), args[1]);
+                case "pay", "setbal" -> filter(List.of("1", "5", "10", "30", "60"), args[1]);
+                case "deathban" -> args[0].equalsIgnoreCase("check") || args[0].equalsIgnoreCase("remove") ? filter(onlinePlayers(), args[1]) : filter(List.of("1", "5", "10", "30", "60"), args[1]);
                 default -> List.of();
             };
         }
@@ -319,13 +337,41 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
             return;
         }
         String message = joinRequired(args, 1);
+        replyTargets.put(player.getUniqueId(), target.getUniqueId());
+        replyTargets.put(target.getUniqueId(), player.getUniqueId());
         player.sendMessage(color("&7(To &c" + target.getName() + "&7) &f" + message));
         target.sendMessage(color("&7(From &c" + player.getName() + "&7) &f" + message));
+        spy(player, target, message);
+    }
+
+    private void reply(CommandSender sender, String[] args) {
+        Player player = player(sender);
+        UUID targetId = replyTargets.get(player.getUniqueId());
+        if (targetId == null) {
+            throw new IllegalArgumentException("You do not have anyone to reply to.");
+        }
+        Player target = Bukkit.getPlayer(targetId);
+        if (target == null) {
+            throw new IllegalArgumentException("That player is no longer online.");
+        }
+        message(sender, new String[]{target.getName(), joinRequired(args, 0)});
     }
 
     private void ping(CommandSender sender, String[] args) {
+        if (args.length >= 1 && !sender.hasPermission("hcf.staff")) {
+            throw new IllegalArgumentException("No permission.");
+        }
         Player target = args.length == 0 ? player(sender) : target(args[0]);
         sender.sendMessage(color("&8[&cHCF&8] &f" + target.getName() + "'s ping: &c" + pingValue(target) + "ms"));
+    }
+
+    private void coords(CommandSender sender) {
+        Player player = player(sender);
+        String claim = claims.at(player.getLocation()).map(com.testrank.hcf.core.claim.Claim::name).orElse("Wilderness");
+        Location loc = player.getLocation();
+        player.sendMessage(color("&8[&cCoords&8] &fWorld&7: &c" + loc.getWorld().getName()
+                + " &8| &fXYZ&7: &c" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ()
+                + " &8| &fClaim&7: &c" + claim));
     }
 
     private void tp(CommandSender sender, String[] args) {
@@ -379,6 +425,15 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
         Player player = player(sender);
         boolean enabled = states.toggleIgnore(player.getUniqueId(), target(arg(args, 0, "/ignore <player>")).getUniqueId());
         player.sendMessage(color("&8[&cHCF&8] &fIgnore is now " + (enabled ? "&aenabled" : "&cdisabled") + "&f."));
+    }
+
+    private void unignore(CommandSender sender, String[] args) {
+        Player player = player(sender);
+        Player target = target(arg(args, 0, "/unignore <player>"));
+        if (states.ignoring(player.getUniqueId(), target.getUniqueId())) {
+            states.toggleIgnore(player.getUniqueId(), target.getUniqueId());
+        }
+        player.sendMessage(color("&8[&cHCF&8] &fYou are no longer ignoring &c" + target.getName() + "&f."));
     }
 
     private void rename(CommandSender sender, String[] args) {
@@ -505,6 +560,21 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
         new SettingsMenu(menus, playerSettings).open(player(sender), menus);
     }
 
+    private void list(CommandSender sender) {
+        long staffOnline = Bukkit.getOnlinePlayers().stream().filter(player -> player.hasPermission("hcf.staff")).count();
+        sender.sendMessage(color("&8[&cHCF&8] &fOnline&7: &c" + Bukkit.getOnlinePlayers().size() + "&7/&c" + Bukkit.getMaxPlayers()
+                + " &8| &fStaff&7: &c" + staffOnline));
+    }
+
+    private void rules(CommandSender sender) {
+        List<String> lines = plugin.getConfig().getStringList("rules");
+        if (lines.isEmpty()) {
+            sender.sendMessage(color("&8[&cRules&8] &fPlay fair, do not exploit, and follow staff instructions."));
+            return;
+        }
+        lines.forEach(line -> sender.sendMessage(color(line)));
+    }
+
     private void worldPlayers(CommandSender sender, String worldName) {
         World world = Bukkit.getWorld(worldName);
         int count = world == null ? 0 : world.getPlayers().size();
@@ -623,6 +693,22 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
         player(sender).teleport(spawn);
     }
 
+    private void setspawn(CommandSender sender) {
+        require(sender, "hcf.admin");
+        Player player = player(sender);
+        spawn = player.getLocation();
+        plugin.getConfig().set("spawn.world", spawn.getWorld().getName());
+        plugin.getConfig().set("spawn.x", spawn.getX());
+        plugin.getConfig().set("spawn.y", spawn.getY());
+        plugin.getConfig().set("spawn.z", spawn.getZ());
+        plugin.getConfig().set("spawn.yaw", (double) spawn.getYaw());
+        plugin.getConfig().set("spawn.pitch", (double) spawn.getPitch());
+        if (plugin instanceof org.bukkit.plugin.java.JavaPlugin javaPlugin) {
+            javaPlugin.saveConfig();
+        }
+        sender.sendMessage(color("&8[&cHCF&8] &fSpawn updated."));
+    }
+
     private void vanish(CommandSender sender) {
         require(sender, "hcf.staff");
         boolean enabled = staff.toggleVanish(player(sender));
@@ -632,6 +718,37 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
     private void staffchat(CommandSender sender, String[] args) {
         require(sender, "hcf.staff");
         chat.staffChat(player(sender), joinRequired(args, 0));
+    }
+
+    private void socialSpy(CommandSender sender) {
+        require(sender, "hcf.staff");
+        Player player = player(sender);
+        boolean enabled = socialSpy.add(player.getUniqueId());
+        if (!enabled) {
+            socialSpy.remove(player.getUniqueId());
+        }
+        player.sendMessage(color("&8[&cStaff&8] &fSocial spy: " + (enabled ? "&aEnabled" : "&cDisabled")));
+    }
+
+    private void muteChat(CommandSender sender) {
+        require(sender, "hcf.staff");
+        boolean muted = chat.toggleMute();
+        Bukkit.broadcastMessage(color(muted ? "&8[&cChat&8] &fGlobal chat has been &cmuted&f." : "&8[&cChat&8] &fGlobal chat has been &aunmuted&f."));
+    }
+
+    private void slowChat(CommandSender sender, String[] args) {
+        require(sender, "hcf.staff");
+        String value = arg(args, 0, "/slowchat <seconds|off>");
+        long seconds = value.equalsIgnoreCase("off") ? 0L : positiveLong(value);
+        chat.globalSlow(seconds * 1000L);
+        Bukkit.broadcastMessage(color(seconds <= 0L ? "&8[&cChat&8] &fSlow chat has been &adisabled&f." : "&8[&cChat&8] &fSlow chat set to &c" + seconds + "s&f."));
+    }
+
+    private void enderChest(CommandSender sender, String[] args) {
+        require(sender, "hcf.staff");
+        Player viewer = player(sender);
+        Player target = args.length >= 1 ? target(args[0]) : viewer;
+        viewer.openInventory(target.getEnderChest());
     }
 
     private void tellLocation(CommandSender sender, String[] args) {
@@ -671,6 +788,16 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
 
     private void deathban(CommandSender sender, String[] args) {
         require(sender, "hcf.staff");
+        if (args.length >= 1 && (args[0].equalsIgnoreCase("check") || args[0].equalsIgnoreCase("remove"))) {
+            OfflinePlayer target = offline(arg(args, 1, "/deathban " + args[0].toLowerCase(Locale.ROOT) + " <player>"));
+            if (args[0].equalsIgnoreCase("check")) {
+                states.deathbanRemainingAsync(target.getUniqueId()).thenAccept(remaining -> threading.runSync(() ->
+                        sender.sendMessage(color("&8[&cDeathban&8] &f" + target.getName() + "&7: " + (remaining > 0L ? "&c" + formatDuration(remaining) : "&aNot deathbanned")))));
+            } else {
+                revive(sender, new String[]{target.getName() == null ? target.getUniqueId().toString() : target.getName()});
+            }
+            return;
+        }
         Player target = target(arg(args, 0, "/deathban <player> <minutes>"));
         long minutes = positiveLong(arg(args, 1, "/deathban <player> <minutes>"));
         states.deathban(target.getUniqueId(), minutes * 60_000L);
@@ -678,6 +805,29 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
             intel.staffNoteHook(staffer, target.getUniqueId(), target.getName(), "deathban", "Deathbanned for " + minutes + " minutes");
         }
         sender.sendMessage(color("&8[&cStaff&8] &fDeathbanned &c" + target.getName() + "&f."));
+    }
+
+    private void revive(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("hcf.command.revive") && !sender.hasPermission("hcf.staff.revive") && !sender.hasPermission("hcf.admin")) {
+            throw new IllegalArgumentException("No permission.");
+        }
+        OfflinePlayer target = offline(arg(args, 0, "/revive <player>"));
+        String targetName = target.getName() == null ? target.getUniqueId().toString().substring(0, 8) : target.getName();
+        states.revive(target.getUniqueId()).thenAccept(revived -> threading.runSync(() -> {
+            if (revived) {
+                sender.sendMessage(color("&8[&cRevive&8] &fRevived &c" + targetName + " &ffrom deathban."));
+                Player online = target.getPlayer();
+                if (online != null) {
+                    online.sendMessage(color("&8[&cRevive&8] &fYour deathban was removed by &c" + sender.getName() + "&f."));
+                }
+                plugin.getLogger().info("[Revive] " + sender.getName() + " revived " + targetName + " at " + java.time.Instant.now());
+            } else {
+                sender.sendMessage(color("&8[&cRevive&8] &c" + targetName + " is not currently deathbanned."));
+            }
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> sender.sendMessage(color("&8[&cRevive&8] &cCould not revive " + targetName + ": " + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void killtag(CommandSender sender, String[] args) {
@@ -959,6 +1109,14 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
         return target;
     }
 
+    private OfflinePlayer offline(String name) {
+        try {
+            return Bukkit.getOfflinePlayer(UUID.fromString(name));
+        } catch (IllegalArgumentException ignored) {
+            return Bukkit.getOfflinePlayer(name);
+        }
+    }
+
     private World world(String name) {
         World world = Bukkit.getWorld(name);
         if (world == null) throw new IllegalArgumentException("World not found.");
@@ -1012,6 +1170,15 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
         return player == null ? uuid.toString().substring(0, 8) : player.getName();
     }
 
+    private void spy(Player sender, Player target, String message) {
+        for (UUID uuid : socialSpy) {
+            Player spy = Bukkit.getPlayer(uuid);
+            if (spy != null && !spy.equals(sender) && !spy.equals(target) && spy.hasPermission("hcf.staff")) {
+                spy.sendMessage(color("&8[&cSpy&8] &7" + sender.getName() + " -> " + target.getName() + ": &f" + message));
+            }
+        }
+    }
+
     private static String color(String text) {
         return Text.color(text);
     }
@@ -1022,6 +1189,14 @@ public final class CoreCommand implements CommandExecutor, TabCompleter {
         long minutes = (seconds % 3600L) / 60L;
         long secs = seconds % 60L;
         return hours > 0 ? String.format(Locale.US, "%dh %02dm", hours, minutes) : String.format(Locale.US, "%dm %02ds", minutes, secs);
+    }
+
+    private static String rootMessage(Throwable throwable) {
+        Throwable cursor = throwable;
+        while (cursor.getCause() != null) {
+            cursor = cursor.getCause();
+        }
+        return cursor.getMessage() == null ? cursor.getClass().getSimpleName() : cursor.getMessage();
     }
 
     private static int pingValue(Player player) {

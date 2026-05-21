@@ -4,6 +4,7 @@ import com.testrank.hcf.core.api.HCFService;
 import org.bukkit.Location;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -25,6 +26,10 @@ public final class ClaimService implements HCFService {
 
     public Optional<Claim> byName(String name) {
         return claims.values().stream().filter(claim -> claim.name().equalsIgnoreCase(name)).findFirst();
+    }
+
+    public List<Claim> byOwner(UUID owner) {
+        return claims.values().stream().filter(claim -> java.util.Objects.equals(claim.owner(), owner)).toList();
     }
 
     @Override
@@ -66,6 +71,27 @@ public final class ClaimService implements HCFService {
         if (claim == null) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("Claim not found."));
         }
+        return delete(claim);
+    }
+
+    public CompletableFuture<Claim> delete(UUID id) {
+        Claim claim = claims.get(id);
+        if (claim == null) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Claim not found."));
+        }
+        return delete(claim);
+    }
+
+    public CompletableFuture<Integer> deleteAllOwned(UUID owner) {
+        List<Claim> owned = byOwner(owner);
+        if (owned.isEmpty()) {
+            return CompletableFuture.completedFuture(0);
+        }
+        CompletableFuture<?>[] futures = owned.stream().map(this::delete).toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(futures).thenApply(ignored -> owned.size());
+    }
+
+    private CompletableFuture<Claim> delete(Claim claim) {
         synchronized (this) {
             claims.remove(claim.id());
             index.rebuild(claims.values());

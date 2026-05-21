@@ -30,13 +30,19 @@ public record HCFSettings(
         double factionDtrPerMember,
         double factionMaxDtr,
         double factionRegenPerMinute,
+        double factionDtrLossPerDeath,
         int factionFreezeDurationSeconds,
         int factionInviteExpireSeconds,
+        boolean factionDtrDeathBroadcast,
+        String factionDtrDeathMessage,
+        List<String> factionDtrLossDisabledWorlds,
         int claimMovementBlockShift,
         double claimPricePerBlock,
         long claimMinimumPrice,
         int claimMinimumSize,
         int claimMaximumSize,
+        int claimMinimumSpawnDistance,
+        List<String> claimAllowedWorlds,
         int glowstoneResetMinutes,
         int classWarmupSeconds,
         int kothCapSeconds,
@@ -64,13 +70,20 @@ public record HCFSettings(
         factionDtrPerMember = factionDtrPerMember <= 0.0D ? 1.01D : factionDtrPerMember;
         factionMaxDtr = factionMaxDtr <= 0.0D ? 6.01D : factionMaxDtr;
         factionRegenPerMinute = factionRegenPerMinute <= 0.0D ? 0.1D : factionRegenPerMinute;
+        factionDtrLossPerDeath = factionDtrLossPerDeath <= 0.0D ? 1.0D : factionDtrLossPerDeath;
         factionFreezeDurationSeconds = positive(factionFreezeDurationSeconds, 30);
         factionInviteExpireSeconds = positive(factionInviteExpireSeconds, 60);
+        factionDtrDeathMessage = factionDtrDeathMessage == null || factionDtrDeathMessage.isBlank()
+                ? "&6[&cFaction&6] &f%player% died. Your faction lost &c%loss% &fDTR. DTR: &c%old_dtr% &7-> &c%new_dtr%&f. Regen frozen for &c%freeze%&f."
+                : factionDtrDeathMessage;
+        factionDtrLossDisabledWorlds = factionDtrLossDisabledWorlds == null ? List.of() : List.copyOf(factionDtrLossDisabledWorlds);
         claimMovementBlockShift = Math.max(1, Math.min(8, claimMovementBlockShift));
         claimPricePerBlock = Math.max(0.0D, claimPricePerBlock);
         claimMinimumPrice = Math.max(0L, claimMinimumPrice);
         claimMinimumSize = positive(claimMinimumSize, 5);
         claimMaximumSize = Math.max(claimMinimumSize, claimMaximumSize <= 0 ? 150 : claimMaximumSize);
+        claimMinimumSpawnDistance = Math.max(0, claimMinimumSpawnDistance);
+        claimAllowedWorlds = claimAllowedWorlds == null ? List.of() : List.copyOf(claimAllowedWorlds);
         glowstoneResetMinutes = positive(glowstoneResetMinutes, 20);
         classWarmupSeconds = Math.max(0, classWarmupSeconds);
         kothCapSeconds = positive(kothCapSeconds, 900);
@@ -106,13 +119,19 @@ public record HCFSettings(
                 config.getDouble("faction.dtr-per-member", 1.01D),
                 config.getDouble("faction.max-dtr", 6.01D),
                 config.getDouble("faction.regen-per-minute", 0.1D),
+                config.getDouble("faction.dtr-loss-per-death", 1.0D),
                 config.getInt("faction.freeze-duration-seconds", 30),
                 config.getInt("faction.invite-expire-seconds", 60),
+                config.getBoolean("faction.dtr-death-broadcast.enabled", true),
+                config.getString("faction.dtr-death-broadcast.message", "&6[&cFaction&6] &f%player% died. Your faction lost &c%loss% &fDTR. DTR: &c%old_dtr% &7-> &c%new_dtr%&f. Regen frozen for &c%freeze%&f."),
+                config.getStringList("faction.dtr-loss-disabled-worlds"),
                 config.getInt("claims.movement-check-block-shift", 4),
                 config.getDouble("claims.price-per-block", 2.0D),
                 config.getLong("claims.minimum-price", 250L),
                 config.getInt("claims.minimum-size", 5),
                 config.getInt("claims.maximum-size", 150),
+                config.getInt("claims.minimum-spawn-distance", 100),
+                config.getStringList("claims.allowed-worlds"),
                 config.getInt("glowstone.reset-minutes", 20),
                 config.getInt("pvp-classes.warmup-seconds", 3),
                 config.getInt("koth.cap-time-seconds", 900),

@@ -117,13 +117,18 @@ public final class HCFPlugin extends JavaPlugin {
         Threading threading = services.register(Threading.class, new Threading(this));
         TpsService tps = services.register(TpsService.class, new TpsService(this));
         MongoManager mongo = services.register(MongoManager.class, new MongoManager(settings));
+        if (settings.productionMode() && !mongo.verifyConnection(5, java.util.concurrent.TimeUnit.SECONDS)) {
+            getLogger().severe("server.production-mode is true but MongoDB could not be verified. Refusing to enable gameplay systems.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         RedisManager redis = services.register(RedisManager.class, new RedisManager(settings));
         ParticleIntelService particleIntel = services.register(ParticleIntelService.class, new ParticleIntelService(this, redis, threading));
         ProfileService profiles = services.register(ProfileService.class, new ProfileService(new ProfileRepository(mongo), redis));
         PlayerStateService states = services.register(PlayerStateService.class, new PlayerStateService(settings, profiles));
         TeamService teams = services.register(TeamService.class, new TeamService(new TeamRepository(mongo), profiles, redis, settings));
-        DtrService dtr = services.register(DtrService.class, new DtrService(this, teams, settings, particleIntel));
         ClaimService claims = services.register(ClaimService.class, new ClaimService(new ClaimRepository(mongo)));
+        DtrService dtr = services.register(DtrService.class, new DtrService(this, teams, claims, settings, particleIntel));
         ClaimSelectionService claimSelections = services.register(ClaimSelectionService.class, new ClaimSelectionService());
         CombatService combat = services.register(CombatService.class, new CombatService(settings));
         CooldownService cooldowns = services.register(CooldownService.class, new CooldownService(profiles));
@@ -188,7 +193,9 @@ public final class HCFPlugin extends JavaPlugin {
         command("team").setExecutor(teamCommand);
         command("team").setTabCompleter(teamCommand);
         command("staff").setExecutor(new StaffCommand(staff));
-        command("freeze").setExecutor(new FreezeCommand(staff));
+        FreezeCommand freezeCommand = new FreezeCommand(staff);
+        command("freeze").setExecutor(freezeCommand);
+        command("freeze").setTabCompleter(freezeCommand);
         HCFCommand adminCommand = new HCFCommand(this, claims, claimSelections, teams, partnerItems, koths, eotw, sotw, globalTimers, threading);
         CoreCommand coreCommand = new CoreCommand(this, profiles, states, economy, staff, reports, lastInventories, teams, claims, dtr, combat, pvpProtection, chat, events, koths, sotw, eotw, globalTimers, threading, menus, playerSettings, shop, leaderboards, particleIntel);
         registerAdminCommand("hcf", adminCommand);
@@ -252,11 +259,22 @@ public final class HCFPlugin extends JavaPlugin {
         if (getConfig().getInt("claims.maximum-size", 150) < getConfig().getInt("claims.minimum-size", 5)) {
             getLogger().warning("claims.maximum-size is smaller than claims.minimum-size; runtime value will be clamped.");
         }
+        if (getConfig().getInt("claims.minimum-spawn-distance", 100) < 0) {
+            getLogger().warning("claims.minimum-spawn-distance cannot be negative; runtime value will be clamped to 0.");
+        }
+        for (String world : getConfig().getStringList("claims.allowed-worlds")) {
+            if (getServer().getWorld(world) == null) {
+                getLogger().warning("Configured claims.allowed-worlds entry is not loaded: " + world);
+            }
+        }
         if (getConfig().getInt("faction.max-members", 25) <= 0) {
             getLogger().warning("faction.max-members must be positive; runtime value will use the default.");
         }
         if (getConfig().getInt("faction.max-claims", 6) <= 0) {
             getLogger().warning("faction.max-claims must be positive; runtime value will use the default.");
+        }
+        if (getConfig().getDouble("faction.dtr-loss-per-death", 1.0D) <= 0.0D) {
+            getLogger().warning("faction.dtr-loss-per-death must be positive; runtime value will use the default.");
         }
         if (getConfig().getInt("timers.rod", 3) <= 0) {
             getLogger().warning("timers.rod must be positive; runtime value will use the default.");
@@ -523,13 +541,13 @@ public final class HCFPlugin extends JavaPlugin {
     private void registerCoreCommands(CoreCommand coreCommand) {
         String[] names = {
                 "help", "request", "gamemode", "broadcast", "clearchat", "heal", "feed", "kill", "invsee", "message",
-                "ping", "tp", "tphere", "tplocation", "tpall", "more", "world", "top", "ignore", "rename", "repair",
+                "reply", "ping", "coords", "list", "rules", "tp", "teleport", "tphere", "tplocation", "tpall", "more", "world", "top", "ignore", "unignore", "rename", "repair",
                 "clear", "balance", "cobble", "basetoken", "falltraptoken", "crowbar", "ecomanage", "enchant",
                 "editmenu", "endplayers", "netherplayers", "focus", "unfocus", "near", "lives", "lff", "livesmanage",
                 "logout", "leaderboards", "leaderboard", "managebasetoken", "managefalltraptoken", "playtime", "redeem", "pvp",
                 "resetredeem", "reclaim", "resetreclaim", "lastinv", "sendbasetoken", "sendfalltraptoken", "setend",
-                "settings", "spawn", "vanish", "staffchat", "telllocation", "stats", "strengthnerf", "togglepm",
-                "togglecobble", "togglesounds", "deathban", "pay", "killtag", "schedule", "customtimer", "keyall",
+                "settings", "spawn", "setspawn", "vanish", "staffchat", "socialspy", "mutechat", "slowchat", "enderchest", "telllocation", "stats", "strengthnerf", "togglepm",
+                "toggletells", "togglemessages", "togglecobble", "togglesounds", "deathban", "revive", "pay", "killtag", "schedule", "customtimer", "keyall",
                 "reportsmenu", "requestsmenu", "staffbuild", "spawner", "killstreak", "kit", "conquest", "ktk",
                 "purge", "citadel", "mountain", "systemteam", "setbal", "changelog", "panic",
                 "discord", "teamspeak", "twitter", "store", "social", "website", "media", "giveaway", "shop", "chatcolor", "link"

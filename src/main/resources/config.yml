@@ -41,8 +41,14 @@ faction:
   dtr-per-member: 1.01
   max-dtr: 6.01
   regen-per-minute: 0.1
+  dtr-loss-per-death: 1.0
   freeze-duration-seconds: 30
   invite-expire-seconds: 60
+  dtr-loss-disabled-worlds:
+    - deathban
+  dtr-death-broadcast:
+    enabled: true
+    message: "&6[&cFaction&6] &f%player% died. Your faction lost &c%loss% &fDTR. DTR: &c%old_dtr% &7-> &c%new_dtr%&f. Regen frozen for &c%freeze%&f."
 
 deathban:
   enabled: true
@@ -86,6 +92,18 @@ claims:
   minimum-price: 250
   minimum-size: 5
   maximum-size: 150
+  minimum-spawn-distance: 100
+  allowed-worlds:
+    - world
+    - world_nether
+    - world_the_end
+
+rules:
+  - "&8&m----------------&8[ &cRules &8]&8&m----------------"
+  - "&c1. &fNo cheating, glitching, scripting, or exploiting."
+  - "&c2. &fNo DTR evasion, insiding, or claim abuse."
+  - "&c3. &fListen to staff during screenshares and support calls."
+  - "&8&m--------------------------------------------------"
 
 koth:
   cap-time-seconds: 900

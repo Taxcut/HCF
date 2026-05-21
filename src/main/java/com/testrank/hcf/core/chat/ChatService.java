@@ -20,6 +20,7 @@ public final class ChatService implements HCFService {
     private final Map<UUID, Long> cooldowns = new ConcurrentHashMap<>();
     private final Map<UUID, ChatChannel> channels = new ConcurrentHashMap<>();
     private volatile long globalSlowMillis;
+    private volatile boolean muted;
 
     public ChatService(TeamService teams, PermissionService permissions, PlayerSettingsService settings) {
         this.teams = teams;
@@ -28,6 +29,9 @@ public final class ChatService implements HCFService {
     }
 
     public boolean canChat(Player player) {
+        if (muted && !player.hasPermission("hcf.staff")) {
+            return false;
+        }
         long now = System.currentTimeMillis();
         long next = cooldowns.getOrDefault(player.getUniqueId(), 0L);
         if (next > now) {
@@ -109,6 +113,19 @@ public final class ChatService implements HCFService {
 
     public void globalSlow(long millis) {
         globalSlowMillis = Math.max(0L, millis);
+    }
+
+    public long globalSlowMillis() {
+        return globalSlowMillis;
+    }
+
+    public boolean muted() {
+        return muted;
+    }
+
+    public boolean toggleMute() {
+        muted = !muted;
+        return muted;
     }
 
     public String messageColor(Player player) {

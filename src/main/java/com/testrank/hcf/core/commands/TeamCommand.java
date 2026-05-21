@@ -42,11 +42,11 @@ import java.util.concurrent.CompletableFuture;
 
 public final class TeamCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SUBCOMMANDS = List.of(
-            "create", "disband", "rename", "roster", "chat", "info", "manage", "invite", "uninvite", "join", "leave",
+            "create", "disband", "rename", "roster", "chat", "info", "who", "show", "manage", "invite", "uninvite", "join", "leave",
             "focus", "unfocus", "stuck", "top", "rally", "unrally", "ally", "unally", "leader", "promote", "demote",
-            "lockclaim", "claim", "sethq", "hq", "kick", "withdraw", "deposit", "list", "map", "base", "falltrap",
+            "lockclaim", "claim", "claimwand", "wand", "unclaim", "unclaimall", "sethq", "hq", "kick", "withdraw", "deposit", "list", "map", "base", "falltrap",
             "camp", "coords", "friendlyfire", "setdtr", "setregen", "setleader", "setbalance", "setpoints",
-            "setkothcaps", "forcedisband", "forcejoin", "forcekick", "forcepromote", "forcedemote", "teleport"
+            "setkothcaps", "forceclaim", "bypass", "forcedisband", "forcejoin", "forcekick", "forcepromote", "forcedemote", "teleport"
     );
     private static final List<String> PLAYER_ARGUMENTS = List.of("invite", "uninvite", "focus", "leader", "promote", "demote", "kick",
             "setleader", "forcejoin", "forcekick", "forcepromote", "forcedemote");
@@ -105,7 +105,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
                 case "rename" -> rename(player, args);
                 case "roster" -> roster(player, args);
                 case "chat", "c" -> teamChat(player, args);
-                case "info", "who" -> info(player, args);
+                case "info", "who", "show" -> info(player, args);
                 case "manage" -> manage(player);
                 case "invite" -> invite(player, args);
                 case "uninvite" -> uninvite(player, args);
@@ -125,6 +125,8 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
                 case "lockclaim" -> lockClaim(player);
                 case "claimwand", "wand" -> claimWand(player);
                 case "claim" -> claim(player, args);
+                case "unclaim" -> unclaim(player, args);
+                case "unclaimall" -> unclaimAll(player);
                 case "sethq" -> setHq(player);
                 case "hq" -> hq(player);
                 case "kick" -> kick(player, args);
@@ -143,6 +145,8 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
                 case "setbalance" -> setBalance(player, args);
                 case "setpoints" -> setPoints(player, args);
                 case "setkothcaps" -> setKothCaps(player, args);
+                case "forceclaim" -> forceClaim(player, args);
+                case "bypass" -> bypass(player);
                 case "forcedisband" -> forceDisband(player, args);
                 case "forcejoin" -> forceJoin(player, args);
                 case "forcekick" -> forceKick(player, args);
@@ -175,6 +179,12 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
             }
             if (sub.equals("list") || sub.equals("sort")) {
                 return filter(List.of("online", "balance", "points", "dtr", "members"), args[1]);
+            }
+            if (sub.equals("unclaim")) {
+                return filter(ownedClaimNames(sender), args[1]);
+            }
+            if (sub.equals("forceclaim")) {
+                return filter(java.util.Arrays.stream(ClaimType.values()).map(type -> type.name().toLowerCase(Locale.ROOT)).toList(), args[1]);
             }
         }
         if (args.length == 3 && (sub.equals("setleader") || sub.equals("forcejoin"))) {
@@ -441,6 +451,33 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         claimWand(player);
     }
 
+    private void unclaim(Player player, String[] args) {
+        Team team = ownTeam(player);
+        requireRole(player, team, TeamRole.CAPTAIN);
+        Claim claim = args.length >= 2 ? claims.byName(args[1]).orElseThrow(() -> new IllegalArgumentException("Claim not found."))
+                : claims.at(player.getLocation()).orElseThrow(() -> new IllegalArgumentException("Stand inside a faction claim or use /f unclaim <claim>."));
+        if (!team.id().equals(claim.owner())) {
+            throw new IllegalArgumentException("That claim is not owned by your faction.");
+        }
+        claims.delete(claim.id()).thenAccept(deleted -> threading.runSync(() ->
+                player.sendMessage(color("&8[&cClaim&8] &fUnclaimed &c" + deleted.name() + "&f."))))
+                .exceptionally(throwable -> {
+                    threading.runSync(() -> player.sendMessage(color("&8[&cClaim&8] &c" + rootMessage(throwable))));
+                    return null;
+                });
+    }
+
+    private void unclaimAll(Player player) {
+        Team team = ownTeam(player);
+        requireRole(player, team, TeamRole.LEADER);
+        claims.deleteAllOwned(team.id()).thenAccept(count -> threading.runSync(() ->
+                player.sendMessage(color("&8[&cClaim&8] &fRemoved &c" + count + " &ffaction claim" + (count == 1 ? "" : "s") + "&f."))))
+                .exceptionally(throwable -> {
+                    threading.runSync(() -> player.sendMessage(color("&8[&cClaim&8] &c" + rootMessage(throwable))));
+                    return null;
+                });
+    }
+
     private void setHq(Player player) {
         Team team = ownTeam(player);
         requireRole(player, team, TeamRole.CAPTAIN);
@@ -635,6 +672,30 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         complete(player, teams.save(team), "&fSet &c" + team.name() + " &fKOTH caps to &c" + team.kothCaps() + "&f.");
     }
 
+    private void forceClaim(Player player, String[] args) {
+        requireAdmin(player);
+        ClaimType type = args.length >= 2 ? ClaimType.valueOf(args[1].toUpperCase(Locale.ROOT)) : ClaimType.WARZONE;
+        String name = args.length >= 3 ? args[2] : uniqueClaimName(type.name().charAt(0) + type.name().substring(1).toLowerCase(Locale.ROOT));
+        var selection = selections.selection(player).orElseThrow(() -> new IllegalArgumentException("Select two corners with /claimwand first."));
+        claims.create(null, name, selection.first().getWorld().getName(),
+                        selection.first().getBlockX(), selection.first().getBlockZ(),
+                        selection.second().getBlockX(), selection.second().getBlockZ(), type)
+                .thenAccept(claim -> threading.runSync(() -> {
+                    selections.clear(player);
+                    player.sendMessage(color("&8[&cClaim&8] &fForce-created &c" + claim.name() + " &fas &c" + claim.type().name() + "&f."));
+                }))
+                .exceptionally(throwable -> {
+                    threading.runSync(() -> player.sendMessage(color("&8[&cClaim&8] &c" + rootMessage(throwable))));
+                    return null;
+                });
+    }
+
+    private void bypass(Player player) {
+        requireAdmin(player);
+        boolean enabled = states.toggleStaffBuild(player.getUniqueId());
+        player.sendMessage(color("&8[&cTeam&8] &fClaim bypass/staff build: " + (enabled ? "&aEnabled" : "&cDisabled")));
+    }
+
     private void forceDisband(Player player, String[] args) {
         requireAdmin(player);
         Team team = team(arg(args, 1, "/team forcedisband <team>"));
@@ -695,6 +756,7 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(color("&c/" + label + " create <name> &8- &fCreate a faction"));
         player.sendMessage(color("&4/" + label + " invite <player> &8- &7Invite a member"));
         player.sendMessage(color("&c/" + label + " claim &8- &fClaim land after using the wand"));
+        player.sendMessage(color("&4/" + label + " unclaim/unclaimall &8- &7Remove faction claims"));
         player.sendMessage(color("&4/" + label + " sethq &8- &7Set HQ, &c/" + label + " hq &7to teleport"));
         player.sendMessage(color("&c/" + label + " focus <player> &8- &fMark a target"));
         player.sendMessage(color("&4/" + label + " rally &8- &7Set rally, &c/" + label + " unrally &7to clear"));
@@ -906,6 +968,28 @@ public final class TeamCommand implements CommandExecutor, TabCompleter {
 
     private List<String> teamNames() {
         return teams.teams().stream().map(Team::name).sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    private String uniqueClaimName(String base) {
+        if (claims.byName(base).isEmpty()) {
+            return base;
+        }
+        for (int i = 2; i < 100; i++) {
+            String candidate = base + "-" + i;
+            if (claims.byName(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        return base + "-" + UUID.randomUUID().toString().substring(0, 4);
+    }
+
+    private List<String> ownedClaimNames(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            return List.of();
+        }
+        return teams.byPlayer(player.getUniqueId())
+                .map(team -> claims.byOwner(team.id()).stream().map(Claim::name).sorted(String.CASE_INSENSITIVE_ORDER).toList())
+                .orElseGet(List::of);
     }
 
     private static List<String> onlinePlayers() {

@@ -24,6 +24,7 @@ public final class Team {
     private volatile Position rally;
     private volatile UUID focused;
     private volatile boolean frozen;
+    private volatile long frozenUntil;
     private volatile boolean claimLocked;
     private volatile int points;
     private volatile int kothCaps;
@@ -67,6 +68,8 @@ public final class Team {
     public void focused(UUID focused) { this.focused = focused; }
     public boolean frozen() { return frozen; }
     public void frozen(boolean frozen) { this.frozen = frozen; }
+    public long frozenUntil() { return frozenUntil; }
+    public void frozenUntil(long frozenUntil) { this.frozenUntil = Math.max(0L, frozenUntil); }
     public boolean claimLocked() { return claimLocked; }
     public void claimLocked(boolean claimLocked) { this.claimLocked = claimLocked; }
     public boolean regenPaused() { return regenPaused; }

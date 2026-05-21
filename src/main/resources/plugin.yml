@@ -14,6 +14,7 @@ commands:
     description: Report a player to staff.
   request:
     description: Request staff assistance.
+    aliases: [helpop]
   gamemode:
     description: Change gamemode.
     aliases: [gm]
@@ -33,9 +34,20 @@ commands:
   message:
     description: Send a private message.
     aliases: [msg, tell, w]
+  reply:
+    description: Reply to a private message.
+    aliases: [r]
   ping:
     description: Check ping.
+  coords:
+    description: Show your coordinates and current claim.
+  list:
+    description: Show online players.
+  rules:
+    description: Show server rules.
   tp:
+    description: Teleport to a player.
+  teleport:
     description: Teleport to a player.
   tphere:
     description: Teleport a player to you.
@@ -51,6 +63,8 @@ commands:
     description: Teleport to the highest block.
   ignore:
     description: Ignore a player.
+  unignore:
+    description: Stop ignoring a player.
   rename:
     description: Rename held item.
   repair:
@@ -126,6 +140,9 @@ commands:
     description: Open settings.
   spawn:
     description: Teleport to spawn.
+    aliases: [s]
+  setspawn:
+    description: Set server spawn.
   staff:
     description: Toggle staff mode.
     aliases: [h]
@@ -135,6 +152,15 @@ commands:
   staffchat:
     description: Staff chat.
     aliases: [sc]
+  socialspy:
+    description: Toggle private message spy.
+  mutechat:
+    description: Toggle global chat mute.
+  slowchat:
+    description: Set global chat slow mode.
+  enderchest:
+    description: Open an ender chest.
+    aliases: [ec]
   telllocation:
     description: Send your location.
     aliases: [tl]
@@ -144,12 +170,19 @@ commands:
     description: Toggle strength nerf.
   togglepm:
     description: Toggle private messages.
+  toggletells:
+    description: Toggle private messages.
+  togglemessages:
+    description: Toggle private messages.
   togglecobble:
     description: Toggle cobble pickup.
   togglesounds:
     description: Toggle sounds.
   deathban:
     description: Deathban a player.
+  revive:
+    description: Revive a deathbanned player.
+    aliases: [rev, unbanlife]
   pay:
     description: Pay a player.
   killtag:
@@ -226,6 +259,7 @@ commands:
     aliases: [f, faction]
   freeze:
     description: Freeze a player.
+    aliases: [unfreeze]
   hcf:
     description: Core administration.
   claimwand:
@@ -241,4 +275,12 @@ permissions:
   hcf.staff:
     default: op
   hcf.admin:
+    default: op
+  hcf.command.revive:
+    default: op
+  hcf.staff.revive:
+    default: op
+  hcf.kit.bypass:
+    default: op
+  hcf.deathban.bypass:
     default: op

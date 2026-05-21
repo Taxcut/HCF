@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Locale;
 
 public final class HCFCommand implements CommandExecutor, TabCompleter {
-    private static final List<String> HCF_SUBCOMMANDS = List.of("claimwand", "claim", "claimhere", "partner", "koth", "sotw", "eotw", "timer");
+    private static final List<String> HCF_SUBCOMMANDS = List.of("status", "reload", "claimwand", "claim", "claimhere", "partner", "koth", "sotw", "eotw", "timer");
     private static final List<String> CLAIM_TYPES = Arrays.stream(ClaimType.values()).map(type -> type.name().toLowerCase(Locale.ROOT)).toList();
 
     private final Plugin plugin;
@@ -107,7 +107,6 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
         if (name.equals("hcf")) {
             if (args.length == 1) {
                 ArrayList<String> options = new ArrayList<>(HCF_SUBCOMMANDS);
-                options.add("reload");
                 return filter(options, args[0]);
             }
             String[] shifted = Arrays.copyOfRange(args, 1, args.length);
@@ -121,6 +120,7 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
         String[] rest = Arrays.copyOfRange(args, 1, args.length);
         return switch (sub) {
             case "reload" -> reload(player);
+            case "status" -> status(player);
             case "wand", "claimwand" -> claimWand(player);
             case "claim" -> claim(player, rest);
             case "claimhere" -> claimHere(player);
@@ -138,7 +138,8 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
 
     private boolean claimHere(Player player) {
         var loc = player.getLocation();
-        claims.create(null, "Admin Claim", loc.getWorld().getName(), loc.getBlockX() - 10, loc.getBlockZ() - 10,
+        String name = uniqueClaimName("Admin Claim");
+        claims.create(null, name, loc.getWorld().getName(), loc.getBlockX() - 10, loc.getBlockZ() - 10,
                         loc.getBlockX() + 10, loc.getBlockZ() + 10, ClaimType.WARZONE)
                 .thenAccept(claim -> threading.runSync(() ->
                         player.sendMessage(Text.color("&8[&cHCF&8] &fCreated claim &c" + claim.name() + "&f."))))
@@ -158,6 +159,17 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
             plugin.reloadConfig();
             player.sendMessage(Text.color("&8[&cHCF&8] &fReloaded Bukkit config."));
         }
+        return true;
+    }
+
+    private boolean status(Player player) {
+        player.sendMessage(Text.color("&8&m--------------------&8[ &c&lHCF Status &8]&8&m--------------------"));
+        player.sendMessage(Text.color("&cProduction&7: &f" + plugin.getConfig().getBoolean("server.production-mode", false)));
+        player.sendMessage(Text.color("&cMongo&7: &f" + plugin.getConfig().getBoolean("mongo.enabled", false) + " &8| &cRedis&7: &f" + plugin.getConfig().getBoolean("redis.enabled", false)));
+        player.sendMessage(Text.color("&cTeams&7: &f" + teams.teams().size() + " &8| &cClaims&7: &f" + claims.claims().size()));
+        player.sendMessage(Text.color("&cKOTH Active&7: &f" + koths.activeDisplays().size() + " &8| &cTimers&7: &f" + globalTimers.activeTimers().size()));
+        player.sendMessage(Text.color("&cSOTW&7: &f" + sotw.active() + " &8| &cEOTW&7: &f" + eotw.active()));
+        player.sendMessage(Text.color("&8&m--------------------------------------------------"));
         return true;
     }
 
@@ -282,6 +294,7 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(Text.color("&c/eotw <true|false> &8- &fToggle EOTW"));
         player.sendMessage(Text.color("&4/timer <name> <minutes> &8- &7Create a scoreboard timer"));
         player.sendMessage(Text.color("&c/hcf reload &8- &fReload config files"));
+        player.sendMessage(Text.color("&4/hcf status &8- &7View service and data counts"));
         player.sendMessage(Text.color("&8&m--------------------------------------------------"));
     }
 
@@ -337,6 +350,19 @@ public final class HCFCommand implements CommandExecutor, TabCompleter {
 
     private List<String> claimNames() {
         return claims.claims().stream().map(claim -> claim.name()).sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    private String uniqueClaimName(String base) {
+        if (claims.byName(base).isEmpty()) {
+            return base;
+        }
+        for (int i = 2; i < 100; i++) {
+            String candidate = base + "-" + i;
+            if (claims.byName(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        return base + "-" + java.util.UUID.randomUUID().toString().substring(0, 4);
     }
 
     private static ClaimType parseClaimType(String text) {

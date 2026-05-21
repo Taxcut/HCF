@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 
 public final class PlayerStateService implements HCFService {
@@ -203,6 +204,25 @@ public final class PlayerStateService implements HCFService {
         long until = System.currentTimeMillis() + millis;
         deathbans.put(uuid, until);
         persist(uuid, "deathban_until", until);
+    }
+
+    public CompletableFuture<Boolean> revive(UUID uuid) {
+        long now = System.currentTimeMillis();
+        Long cachedUntil = deathbans.remove(uuid);
+        return profiles.load(uuid).thenCompose(profile -> {
+            long storedUntil = profile.statistic("deathban_until");
+            boolean wasDeathbanned = (cachedUntil != null && cachedUntil > now) || storedUntil > now;
+            profile.statistics().put("deathban_until", 0L);
+            return profiles.save(profile).thenApply(ignored -> wasDeathbanned);
+        });
+    }
+
+    public CompletableFuture<Long> deathbanRemainingAsync(UUID uuid) {
+        long cached = deathbanRemaining(uuid);
+        if (cached > 0L || profiles.cached(uuid).isPresent()) {
+            return CompletableFuture.completedFuture(cached);
+        }
+        return profiles.load(uuid).thenApply(profile -> Math.max(0L, profile.statistic("deathban_until") - System.currentTimeMillis()));
     }
 
     public long deathbanRemaining(UUID uuid) {

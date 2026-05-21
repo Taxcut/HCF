@@ -17,6 +17,7 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -93,6 +94,21 @@ public final class ClaimWandListener implements Listener {
             player.sendMessage(Text.color("&8[&cClaim&8] &cSelect two corners first."));
             return;
         }
+        String world = selection.get().first().getWorld().getName();
+        if (!claimingAllowedInWorld(world)) {
+            purchasing.remove(player.getUniqueId());
+            player.sendMessage(Text.color("&8[&cClaim&8] &cYou cannot claim in &f" + world + "&c."));
+            return;
+        }
+        int firstX = selection.get().first().getBlockX();
+        int firstZ = selection.get().first().getBlockZ();
+        int secondX = selection.get().second().getBlockX();
+        int secondZ = selection.get().second().getBlockZ();
+        if (tooCloseToSpawn(selection.get().first().getWorld(), firstX, firstZ, secondX, secondZ)) {
+            purchasing.remove(player.getUniqueId());
+            player.sendMessage(Text.color("&8[&cClaim&8] &cThis claim is too close to spawn or warzone."));
+            return;
+        }
         int width = Math.abs(selection.get().first().getBlockX() - selection.get().second().getBlockX()) + 1;
         int length = Math.abs(selection.get().first().getBlockZ() - selection.get().second().getBlockZ()) + 1;
         if (width < settings.claimMinimumSize() || length < settings.claimMinimumSize()) {
@@ -107,41 +123,37 @@ public final class ClaimWandListener implements Listener {
         }
         int area = area(selection.get().first(), selection.get().second());
         long price = price(area);
-        economy.withdraw(player.getUniqueId(), price).thenAccept(success -> {
-            if (!success) {
-                purchasing.remove(player.getUniqueId());
-                threading.runSync(() -> player.sendMessage(Text.color("&8[&cClaim&8] &cYou need $" + price + " to purchase this claim.")));
-                return;
-            }
-            claims.create(team.id(), team.name(), selection.get().first().getWorld().getName(),
-                    selection.get().first().getBlockX(), selection.get().first().getBlockZ(),
-                    selection.get().second().getBlockX(), selection.get().second().getBlockZ(), ClaimType.PLAYER)
-                    .thenAccept(claim -> threading.runSync(() -> {
-                        purchasing.remove(player.getUniqueId());
-                        removeWand(player);
-                        selections.clear(player);
-                        intel.claimIntel(player, team, claim, price, area);
-                        player.sendMessage(Text.color("&8[&cClaim&8] &fPurchased &c" + area + " blocks &ffor &a$" + price + "&f."));
-                    }))
-                    .exceptionally(throwable -> {
-                        purchasing.remove(player.getUniqueId());
-                        economy.add(player.getUniqueId(), price);
-                        threading.runSync(() -> {
-                            String reason = rootMessage(throwable);
-                            intel.raidAbuse(player, team, "claim_create_failed", java.util.Map.of(
-                                    "reason", reason,
-                                    "area", area,
-                                    "price", price
-                            ));
-                            player.sendMessage(Text.color("&8[&cClaim&8] &cCould not create claim: " + reason));
-                        });
-                        return null;
-                    });
-        }).exceptionally(throwable -> {
+        if (team.balance() < price) {
             purchasing.remove(player.getUniqueId());
-            threading.runSync(() -> player.sendMessage(Text.color("&8[&cClaim&8] &cCould not charge your balance: " + rootMessage(throwable))));
-            return null;
-        });
+            player.sendMessage(Text.color("&8[&cClaim&8] &cYour faction needs &a$" + price + " &cto purchase this claim. Deposit money with &f/f deposit&c."));
+            return;
+        }
+        String claimName = nextClaimName(team.name(), (int) existingClaims + 1);
+        double previousBalance = team.balance();
+        team.balance(previousBalance - price);
+        teams.save(team).thenCompose(ignored -> claims.create(team.id(), claimName, world, firstX, firstZ, secondX, secondZ, ClaimType.PLAYER))
+                .thenAccept(claim -> threading.runSync(() -> {
+                    purchasing.remove(player.getUniqueId());
+                    removeWand(player);
+                    selections.clear(player);
+                    intel.claimIntel(player, team, claim, price, area);
+                    player.sendMessage(Text.color("&8[&cClaim&8] &fPurchased &c" + area + " blocks &ffor &a$" + price + " &ffrom faction balance."));
+                }))
+                .exceptionally(throwable -> {
+                    team.balance(previousBalance);
+                    teams.save(team);
+                    purchasing.remove(player.getUniqueId());
+                    threading.runSync(() -> {
+                        String reason = rootMessage(throwable);
+                        intel.raidAbuse(player, team, "claim_create_failed", java.util.Map.of(
+                                "reason", reason,
+                                "area", area,
+                                "price", price
+                        ));
+                        player.sendMessage(Text.color("&8[&cClaim&8] &cCould not create claim: " + reason));
+                    });
+                    return null;
+                });
     }
 
     private void removeWand(org.bukkit.entity.Player player) {
@@ -177,6 +189,49 @@ public final class ClaimWandListener implements Listener {
 
     private long price(int area) {
         return Math.max(settings.claimMinimumPrice(), Math.round(area * settings.claimPricePerBlock()));
+    }
+
+    private boolean claimingAllowedInWorld(String world) {
+        if (settings.claimAllowedWorlds().isEmpty()) {
+            return true;
+        }
+        for (String allowed : settings.claimAllowedWorlds()) {
+            if (allowed.equalsIgnoreCase(world)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean tooCloseToSpawn(org.bukkit.World world, int firstX, int firstZ, int secondX, int secondZ) {
+        int minimum = settings.claimMinimumSpawnDistance();
+        if (minimum <= 0 || world == null) {
+            return false;
+        }
+        org.bukkit.Location spawn = world.getSpawnLocation();
+        int minX = Math.min(firstX, secondX);
+        int maxX = Math.max(firstX, secondX);
+        int minZ = Math.min(firstZ, secondZ);
+        int maxZ = Math.max(firstZ, secondZ);
+        int closestX = Math.max(minX, Math.min(spawn.getBlockX(), maxX));
+        int closestZ = Math.max(minZ, Math.min(spawn.getBlockZ(), maxZ));
+        int dx = closestX - spawn.getBlockX();
+        int dz = closestZ - spawn.getBlockZ();
+        return (dx * dx + dz * dz) < minimum * minimum;
+    }
+
+    private String nextClaimName(String teamName, int nextNumber) {
+        String base = teamName;
+        if (claims.byName(base).isEmpty()) {
+            return base;
+        }
+        for (int i = Math.max(2, nextNumber); i < nextNumber + 100; i++) {
+            String candidate = teamName + "-" + i;
+            if (claims.byName(candidate).isEmpty()) {
+                return candidate;
+            }
+        }
+        return teamName + "-" + UUID.randomUUID().toString().substring(0, 4).toLowerCase(Locale.ROOT);
     }
 
     private String loc(org.bukkit.Location location) {

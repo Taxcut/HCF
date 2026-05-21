@@ -42,6 +42,19 @@ public final class MongoManager implements HCFService {
         return database.getCollection(name);
     }
 
+    public boolean verifyConnection(long timeout, TimeUnit unit) {
+        if (!enabled) {
+            return false;
+        }
+        try {
+            toFuture(database.runCommand(new Document("ping", 1))).orTimeout(timeout, unit).join();
+            return true;
+        } catch (RuntimeException exception) {
+            Logger.getLogger("HCF").warning("MongoDB startup verification failed: " + exception.getMessage());
+            return false;
+        }
+    }
+
     @Override
     public void start() {
         if (!enabled) {
