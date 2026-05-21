@@ -9,6 +9,7 @@ public record PartnerItemDefinition(
         String id,
         String displayName,
         Material material,
+        List<String> lore,
         long cooldownMillis,
         List<PotionEffect> selfEffects,
         List<PotionEffect> targetEffects

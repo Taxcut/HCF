@@ -36,16 +36,20 @@ public final class PlayerStateService implements HCFService {
     }
 
     public void join(Player player) {
-        sessionStart.put(player.getUniqueId(), System.currentTimeMillis());
-        profiles.cached(player.getUniqueId()).ifPresentOrElse(profile -> {
-            lives.putIfAbsent(player.getUniqueId(), (int) profile.statistics().getOrDefault("lives", (long) settings.defaultLives()).longValue());
-            playtime.put(player.getUniqueId(), profile.statistic("playtime"));
-            killstreaks.put(player.getUniqueId(), (int) profile.statistic("killstreak"));
+        join(player.getUniqueId());
+    }
+
+    public void join(UUID uuid) {
+        sessionStart.put(uuid, System.currentTimeMillis());
+        profiles.cached(uuid).ifPresentOrElse(profile -> {
+            lives.putIfAbsent(uuid, (int) profile.statistics().getOrDefault("lives", (long) settings.defaultLives()).longValue());
+            playtime.put(uuid, profile.statistic("playtime"));
+            killstreaks.put(uuid, (int) profile.statistic("killstreak"));
             long deathbanUntil = profile.statistic("deathban_until");
             if (deathbanUntil > System.currentTimeMillis()) {
-                deathbans.put(player.getUniqueId(), deathbanUntil);
+                deathbans.put(uuid, deathbanUntil);
             }
-        }, () -> lives.putIfAbsent(player.getUniqueId(), settings.defaultLives()));
+        }, () -> lives.putIfAbsent(uuid, settings.defaultLives()));
     }
 
     public void quit(Player player) {

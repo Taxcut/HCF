@@ -6,6 +6,17 @@ plugins {
 group = "com.testrank.hcf"
 version = "1.0"
 
+repositories {
+    mavenCentral()
+    maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
+    maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.codemc.io/repository/maven-releases/")
+    maven("https://repo.codemc.io/repository/maven-snapshots/")
+    maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
+    maven("https://repo.lucko.me/")
+    maven("https://repo.lunarclient.dev")
+}
+
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
     options.release.set(21)

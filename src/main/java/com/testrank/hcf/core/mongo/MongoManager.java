@@ -12,6 +12,8 @@ import com.testrank.hcf.core.config.HCFSettings;
 import org.bson.Document;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 public final class MongoManager implements HCFService {
     private final MongoClient client;
@@ -45,6 +47,13 @@ public final class MongoManager implements HCFService {
         if (!enabled) {
             return;
         }
+        toFuture(database.runCommand(new Document("ping", 1)))
+                .orTimeout(3, TimeUnit.SECONDS)
+                .thenAccept(ignored -> Logger.getLogger("HCF").info("MongoDB connection verified."))
+                .exceptionally(throwable -> {
+                    Logger.getLogger("HCF").warning("MongoDB is enabled but the connection could not be verified: " + throwable.getMessage());
+                    return null;
+                });
         index("profiles", "uuid");
         index("teams", "id");
         index("teams", "nameLower");
@@ -69,7 +78,10 @@ public final class MongoManager implements HCFService {
     }
 
     private void index(String collection, String key) {
-        toFuture(collection(collection).createIndex(Indexes.ascending(key))).exceptionally(throwable -> null);
+        toFuture(collection(collection).createIndex(Indexes.ascending(key))).exceptionally(throwable -> {
+            Logger.getLogger("HCF").warning("MongoDB index creation failed for " + collection + "." + key + ": " + throwable.getMessage());
+            return null;
+        });
     }
 
     @Override

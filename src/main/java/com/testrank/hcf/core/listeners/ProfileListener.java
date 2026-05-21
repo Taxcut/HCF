@@ -14,6 +14,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
+import java.util.UUID;
+
 public final class ProfileListener implements Listener {
     private final ProfileService profiles;
     private final PlayerStateService states;
@@ -38,14 +40,15 @@ public final class ProfileListener implements Listener {
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        profiles.load(event.getPlayer().getUniqueId()).thenAccept(profile -> {
-            states.join(event.getPlayer());
+        UUID uuid = event.getPlayer().getUniqueId();
+        profiles.load(uuid).thenAccept(profile -> {
+            states.join(uuid);
             intel.profileExport(profile, teams.byPlayer(profile.uuid()).orElse(null), "join");
             if (!profile.timers().containsKey("pvp_timer")) {
-                pvpProtection.grant(event.getPlayer().getUniqueId(), 30L * 60_000L);
+                pvpProtection.grant(uuid, 30L * 60_000L);
             }
             threading.runSync(() -> {
-                long deathban = states.deathbanRemaining(event.getPlayer().getUniqueId());
+                long deathban = states.deathbanRemaining(uuid);
                 if (deathban > 0L) {
                     event.getPlayer().kickPlayer(com.testrank.hcf.core.util.Text.color("&cYou are deathbanned for &f" + formatDuration(deathban) + "&c."));
                     return;

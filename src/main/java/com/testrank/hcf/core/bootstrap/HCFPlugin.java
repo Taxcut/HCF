@@ -24,11 +24,13 @@ import com.testrank.hcf.core.conquest.ConquestService;
 import com.testrank.hcf.core.economy.EconomyService;
 import com.testrank.hcf.core.eotw.EotwService;
 import com.testrank.hcf.core.events.EventService;
+import com.testrank.hcf.core.events.HCFEventType;
 import com.testrank.hcf.core.freeze.FreezeService;
 import com.testrank.hcf.core.glowstone.GlowstoneService;
 import com.testrank.hcf.core.koth.KothService;
 import com.testrank.hcf.core.leaderboard.LeaderboardService;
 import com.testrank.hcf.core.listeners.ClaimMovementListener;
+import com.testrank.hcf.core.listeners.ClaimProtectionListener;
 import com.testrank.hcf.core.listeners.ClaimWandListener;
 import com.testrank.hcf.core.listeners.ChatListener;
 import com.testrank.hcf.core.listeners.CommandBlockListener;
@@ -104,6 +106,7 @@ public final class HCFPlugin extends JavaPlugin {
         saveBundledResource("stats.yml");
         HCFSettings settings = HCFSettings.from(getConfig());
         validateConfig();
+        logCompatibility(settings);
         services = new ServiceRegistry();
 
         Threading threading = services.register(Threading.class, new Threading(this));
@@ -144,7 +147,7 @@ public final class HCFPlugin extends JavaPlugin {
         ShopService shop = services.register(ShopService.class, new ShopService(this, economy, mongo, threading));
         LeaderboardService leaderboards = services.register(LeaderboardService.class, new LeaderboardService(profiles, states, economy));
         services.register(AbilityService.class, new AbilityService(cooldowns, clients));
-        PartnerItemService partnerItems = services.register(PartnerItemService.class, new PartnerItemService(cooldowns, clients));
+        PartnerItemService partnerItems = services.register(PartnerItemService.class, new PartnerItemService(this, cooldowns, clients));
         PvpProtectionService pvpProtection = services.register(PvpProtectionService.class, new PvpProtectionService(profiles));
         services.register(AntiCheatBridge.class, new AntiCheatBridge());
         services.register(VanishService.class, new VanishService(staff));
@@ -155,12 +158,15 @@ public final class HCFPlugin extends JavaPlugin {
         GlowstoneService glowstone = services.register(GlowstoneService.class, new GlowstoneService(this, events, settings));
 
         services.startAll();
+        getLogger().info("Systems enabled: Mongo=" + settings.mongoEnabled() + ", Redis=" + settings.redisEnabled()
+                + ", PacketEvents optional, Lunar/Apollo optional, Java=" + System.getProperty("java.version") + ".");
         registerListeners(
                 new CommandBlockListener(),
                 new ProfileListener(profiles, states, pvpProtection, waypoints, threading, playerSettings, teams, particleIntel),
                 new CombatListener(this, combat, antiClean, cooldowns, profiles, states, settings, dtr, teams, lastInventories, playerSettings, particleIntel),
                 new LogoutListener(states),
                 new ClaimMovementListener(claims, teams, playerSettings),
+                new ClaimProtectionListener(claims, teams, states),
                 new ClaimWandListener(claimSelections, claims, teams, economy, settings, threading, particleIntel),
                 new ChatListener(chat, teams, threading),
                 new MenuListener(services.require(MenuService.class)),
@@ -173,20 +179,22 @@ public final class HCFPlugin extends JavaPlugin {
                 new StaffListener(staff, states),
                 glowstone
         );
-        command("team").setExecutor(new TeamCommand(teams, dtr, claims, claimSelections, threading, economy, states, chat, waypoints, settings, this, menus, particleIntel));
+        TeamCommand teamCommand = new TeamCommand(teams, dtr, claims, claimSelections, threading, economy, states, chat, waypoints, settings, this, menus, particleIntel);
+        command("team").setExecutor(teamCommand);
+        command("team").setTabCompleter(teamCommand);
         command("staff").setExecutor(new StaffCommand(staff));
         command("freeze").setExecutor(new FreezeCommand(staff));
         HCFCommand adminCommand = new HCFCommand(claims, claimSelections, teams, partnerItems, koths, eotw, sotw, globalTimers, threading);
         CoreCommand coreCommand = new CoreCommand(this, profiles, states, economy, staff, reports, lastInventories, teams, claims, dtr, combat, pvpProtection, chat, events, koths, sotw, eotw, globalTimers, threading, menus, playerSettings, shop, leaderboards, particleIntel);
-        command("hcf").setExecutor(adminCommand);
-        command("claimwand").setExecutor(adminCommand);
-        command("claim").setExecutor(adminCommand);
-        command("claimhere").setExecutor(adminCommand);
-        command("partner").setExecutor(adminCommand);
-        command("koth").setExecutor(adminCommand);
-        command("sotw").setExecutor(adminCommand);
-        command("eotw").setExecutor(adminCommand);
-        command("timer").setExecutor(adminCommand);
+        registerAdminCommand("hcf", adminCommand);
+        registerAdminCommand("claimwand", adminCommand);
+        registerAdminCommand("claim", adminCommand);
+        registerAdminCommand("claimhere", adminCommand);
+        registerAdminCommand("partner", adminCommand);
+        registerAdminCommand("koth", adminCommand);
+        registerAdminCommand("sotw", adminCommand);
+        registerAdminCommand("eotw", adminCommand);
+        registerAdminCommand("timer", adminCommand);
         command("report").setExecutor(new ReportCommand(reports));
         registerCoreCommands(coreCommand);
     }
@@ -210,6 +218,12 @@ public final class HCFPlugin extends JavaPlugin {
             throw new IllegalStateException("Command missing from plugin.yml: " + name);
         }
         return command;
+    }
+
+    private void registerAdminCommand(String name, HCFCommand executor) {
+        PluginCommand command = command(name);
+        command.setExecutor(executor);
+        command.setTabCompleter(executor);
     }
 
     private void saveBundledResource(String name) {
@@ -257,6 +271,25 @@ public final class HCFPlugin extends JavaPlugin {
         validatePotionEffects("potion-limiter.allowed");
         validateSounds("sounds");
         validateShopConfig();
+        validateKitsConfig();
+        validateAbilitiesConfig();
+        validateKothsConfig();
+        validateEventsConfig();
+    }
+
+    private void logCompatibility(HCFSettings settings) {
+        getLogger().info("HCF legacy runtime: Spigot/Bukkit " + getServer().getBukkitVersion() + ", Java " + System.getProperty("java.version") + ".");
+        getLogger().info("This build targets 1.7/1.8 server APIs but requires a Java 21-capable custom Spigot/runtime.");
+        if (!settings.mongoEnabled()) {
+            getLogger().info("MongoDB is disabled; repositories will use in-memory local testing storage where available.");
+        } else {
+            getLogger().warning("MongoDB is enabled. If MongoDB is unreachable, async repository operations will warn/fail without blocking the main thread.");
+        }
+        if (!settings.redisEnabled()) {
+            getLogger().info("Redis is disabled; cross-server sync and Particle intel publishing are disabled for this session.");
+        } else {
+            getLogger().warning("Redis is enabled. If Redis is unreachable, sync will fail soft and stay disabled for this session.");
+        }
     }
 
     private void validateWorld(String path) {
@@ -349,6 +382,119 @@ public final class HCFPlugin extends JavaPlugin {
         }
     }
 
+    private void validateKitsConfig() {
+        YamlConfiguration kits = loadYaml("kits.yml");
+        ConfigurationSection section = kits.getConfigurationSection("kits");
+        if (section == null) {
+            getLogger().warning("kits.yml is missing a kits section.");
+            return;
+        }
+        for (String kit : section.getKeys(false)) {
+            String base = "kits." + kit;
+            if (kits.getInt(base + ".cooldown-minutes", kits.getInt("default-cooldown-minutes", 60)) < 0) {
+                getLogger().warning("Invalid kit cooldown in kits.yml at " + base + ".cooldown-minutes");
+            }
+            for (String item : kits.getStringList(base + ".items")) {
+                validateItemLine("kits.yml", base + ".items", item);
+            }
+            ConfigurationSection armor = kits.getConfigurationSection(base + ".armor");
+            if (armor != null) {
+                for (String slot : armor.getKeys(false)) {
+                    validateItemLine("kits.yml", base + ".armor." + slot, armor.getString(slot));
+                }
+            }
+        }
+    }
+
+    private void validateAbilitiesConfig() {
+        YamlConfiguration abilities = loadYaml("abilities.yml");
+        ConfigurationSection items = abilities.getConfigurationSection("items");
+        if (items == null) {
+            getLogger().warning("abilities.yml is missing an items section.");
+            return;
+        }
+        for (String id : items.getKeys(false)) {
+            String base = "items." + id;
+            validateMaterial(abilities, "abilities.yml", base + ".material");
+            if (abilities.getInt(base + ".cooldown-seconds", abilities.getInt("defaults.global-cooldown-seconds", 8)) < 0) {
+                getLogger().warning("Invalid ability cooldown in abilities.yml at " + base + ".cooldown-seconds");
+            }
+            if (abilities.getInt(base + ".uses", abilities.getInt("defaults.uses", 1)) <= 0) {
+                getLogger().warning("Invalid ability uses in abilities.yml at " + base + ".uses");
+            }
+        }
+    }
+
+    private void validateKothsConfig() {
+        YamlConfiguration koths = loadYaml("koths.yml");
+        ConfigurationSection section = koths.getConfigurationSection("koths");
+        if (section == null) {
+            getLogger().warning("koths.yml is missing a koths section.");
+            return;
+        }
+        for (String name : section.getKeys(false)) {
+            String base = "koths." + name;
+            validateYamlWorld(koths, "koths.yml", base + ".world");
+            int minX = koths.getInt(base + ".min-x");
+            int maxX = koths.getInt(base + ".max-x");
+            int minZ = koths.getInt(base + ".min-z");
+            int maxZ = koths.getInt(base + ".max-z");
+            if (minX == maxX || minZ == maxZ) {
+                getLogger().warning("KOTH region in koths.yml at " + base + " has no area.");
+            }
+            if (koths.getInt(base + ".cap-time-seconds", koths.getInt("cap-time-seconds", 900)) <= 0) {
+                getLogger().warning("Invalid KOTH cap time in koths.yml at " + base + ".cap-time-seconds");
+            }
+        }
+    }
+
+    private void validateEventsConfig() {
+        YamlConfiguration events = loadYaml("events.yml");
+        java.util.List<java.util.Map<?, ?>> rotation = events.getMapList("rotation");
+        for (int i = 0; i < rotation.size(); i++) {
+            java.util.Map<?, ?> entry = rotation.get(i);
+            Object type = entry.get("type");
+            try {
+                HCFEventType.valueOf(String.valueOf(type).toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException exception) {
+                getLogger().warning("Invalid event type in events.yml rotation entry " + i + ": " + type);
+            }
+            Object every = entry.get("every-minutes");
+            if (!(every instanceof Number number) || number.intValue() <= 0) {
+                getLogger().warning("Invalid every-minutes in events.yml rotation entry " + i + ".");
+            }
+        }
+    }
+
+    private YamlConfiguration loadYaml(String name) {
+        return YamlConfiguration.loadConfiguration(new File(getDataFolder(), name));
+    }
+
+    private void validateMaterial(YamlConfiguration config, String fileName, String path) {
+        String value = config.getString(path);
+        if (value != null && Material.matchMaterial(value) == null) {
+            getLogger().warning("Invalid material in " + fileName + " at " + path + ": " + value);
+        }
+    }
+
+    private void validateItemLine(String fileName, String path, String line) {
+        if (line == null || line.isBlank()) {
+            getLogger().warning("Blank item line in " + fileName + " at " + path);
+            return;
+        }
+        String material = line.trim().split("\\s+")[0];
+        if (Material.matchMaterial(material) == null) {
+            getLogger().warning("Invalid material in " + fileName + " at " + path + ": " + material);
+        }
+    }
+
+    private void validateYamlWorld(YamlConfiguration config, String fileName, String path) {
+        String world = config.getString(path);
+        if (world != null && getServer().getWorld(world) == null) {
+            getLogger().warning("Configured world in " + fileName + " at " + path + " is not loaded: " + world);
+        }
+    }
+
     private void registerCoreCommands(CoreCommand coreCommand) {
         String[] names = {
                 "help", "request", "gamemode", "broadcast", "clearchat", "heal", "feed", "kill", "invsee", "message",
@@ -364,7 +510,9 @@ public final class HCFPlugin extends JavaPlugin {
                 "discord", "teamspeak", "twitter", "store", "social", "website", "media", "giveaway", "shop", "chatcolor", "link"
         };
         for (String name : names) {
-            command(name).setExecutor(coreCommand);
+            PluginCommand command = command(name);
+            command.setExecutor(coreCommand);
+            command.setTabCompleter(coreCommand);
         }
     }
 

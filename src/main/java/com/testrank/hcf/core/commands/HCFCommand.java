@@ -14,12 +14,18 @@ import com.testrank.hcf.core.util.Text;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
-public final class HCFCommand implements CommandExecutor {
+public final class HCFCommand implements CommandExecutor, TabCompleter {
+    private static final List<String> HCF_SUBCOMMANDS = List.of("claimwand", "claim", "claimhere", "partner", "koth", "sotw", "eotw", "timer");
+    private static final List<String> CLAIM_TYPES = Arrays.stream(ClaimType.values()).map(type -> type.name().toLowerCase(Locale.ROOT)).toList();
+
     private final ClaimService claims;
     private final ClaimSelectionService selections;
     private final TeamService teams;
@@ -92,6 +98,19 @@ public final class HCFCommand implements CommandExecutor {
         }
     }
 
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        String name = command.getName().toLowerCase(Locale.ROOT);
+        if (name.equals("hcf")) {
+            if (args.length == 1) {
+                return filter(HCF_SUBCOMMANDS, args[0]);
+            }
+            String[] shifted = Arrays.copyOfRange(args, 1, args.length);
+            return completeDirect(args[0].toLowerCase(Locale.ROOT), shifted);
+        }
+        return completeDirect(name, args);
+    }
+
     private boolean handleLegacySubcommand(Player player, String[] args) {
         String sub = args[0].toLowerCase(Locale.ROOT);
         String[] rest = Arrays.copyOfRange(args, 1, args.length);
@@ -131,8 +150,17 @@ public final class HCFCommand implements CommandExecutor {
     }
 
     private boolean claim(Player player, String[] args) {
+        if (args.length >= 2 && args[0].equalsIgnoreCase("delete")) {
+            claims.delete(args[1]).thenAccept(claim -> threading.runSync(() ->
+                    player.sendMessage(Text.color("&8[&cHCF&8] &fDeleted claim &c" + claim.name() + "&f."))))
+                    .exceptionally(throwable -> {
+                        threading.runSync(() -> player.sendMessage(Text.color("&8[&cHCF&8] &c" + rootMessage(throwable))));
+                        return null;
+                    });
+            return true;
+        }
         if (args.length < 1) {
-            player.sendMessage(Text.color("&8[&cHCF&8] &cUsage: &f/claim <name>"));
+            player.sendMessage(Text.color("&8[&cHCF&8] &cUsage: &f/claim <name> &7or &f/claim <type> <name> &7or &f/claim delete <name>"));
             return true;
         }
         var selection = selections.selection(player);
@@ -142,9 +170,11 @@ public final class HCFCommand implements CommandExecutor {
         }
         var first = selection.get().first();
         var second = selection.get().second();
-        var owner = teams.byPlayer(player.getUniqueId()).map(team -> team.id()).orElse(null);
-        claims.create(owner, args[0], first.getWorld().getName(), first.getBlockX(), first.getBlockZ(), second.getBlockX(), second.getBlockZ(),
-                        owner == null ? ClaimType.WARZONE : ClaimType.PLAYER)
+        ClaimType type = args.length >= 2 ? parseClaimType(args[0]) : null;
+        String claimName = type == null ? args[0] : args[1];
+        var owner = type == null || type == ClaimType.PLAYER ? teams.byPlayer(player.getUniqueId()).map(team -> team.id()).orElse(null) : null;
+        ClaimType finalType = type == null ? (owner == null ? ClaimType.WARZONE : ClaimType.PLAYER) : type;
+        claims.create(owner, claimName, first.getWorld().getName(), first.getBlockX(), first.getBlockZ(), second.getBlockX(), second.getBlockZ(), finalType)
                 .thenAccept(claim -> threading.runSync(() ->
                         player.sendMessage(Text.color("&8[&cHCF&8] &fCreated claim &c" + claim.name() + "&f."))))
                 .exceptionally(throwable -> {
@@ -234,6 +264,73 @@ public final class HCFCommand implements CommandExecutor {
         player.sendMessage(Text.color("&c/eotw <true|false> &8- &fToggle EOTW"));
         player.sendMessage(Text.color("&4/timer <name> <minutes> &8- &7Create a scoreboard timer"));
         player.sendMessage(Text.color("&8&m--------------------------------------------------"));
+    }
+
+    private List<String> completeDirect(String name, String[] args) {
+        if (name.equals("claim")) {
+            if (args.length == 1) {
+                ArrayList<String> options = new ArrayList<>();
+                options.add("delete");
+                options.addAll(CLAIM_TYPES);
+                options.addAll(claimNames());
+                return filter(options, args[0]);
+            }
+            if (args.length == 2 && args[0].equalsIgnoreCase("delete")) {
+                return filter(claimNames(), args[1]);
+            }
+        }
+        if (name.equals("koth")) {
+            if (args.length == 1) {
+                return filter(List.of("start"), args[0]);
+            }
+            if (args.length == 2 && args[0].equalsIgnoreCase("start")) {
+                return filter(claimNames(), args[1]);
+            }
+        }
+        if (name.equals("sotw")) {
+            if (args.length == 1) {
+                return filter(List.of("enable", "30", "60", "120"), args[0]);
+            }
+            if (args.length == 2 && args[0].equalsIgnoreCase("enable")) {
+                return filter(List.of("30", "60", "120"), args[1]);
+            }
+        }
+        if (name.equals("eotw")) {
+            return args.length == 1 ? filter(List.of("true", "false"), args[0]) : List.of();
+        }
+        if (name.equals("timer")) {
+            if (args.length == 1) {
+                ArrayList<String> options = new ArrayList<>();
+                options.add("stop");
+                options.add("SOTW_Timer");
+                options.add("Sale_Timer");
+                return filter(options, args[0]);
+            }
+            if (args.length == 2 && args[0].equalsIgnoreCase("stop")) {
+                return filter(globalTimers.activeTimers().stream().map(timer -> timer.id()).toList(), args[1]);
+            }
+        }
+        if (name.equals("partner") && args.length == 1) {
+            return filter(partnerItems.ids(), args[0]);
+        }
+        return List.of();
+    }
+
+    private List<String> claimNames() {
+        return claims.claims().stream().map(claim -> claim.name()).sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    private static ClaimType parseClaimType(String text) {
+        try {
+            return ClaimType.valueOf(text.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private static List<String> filter(List<String> options, String prefix) {
+        String normalized = prefix.toLowerCase(Locale.ROOT);
+        return options.stream().filter(option -> option.toLowerCase(Locale.ROOT).startsWith(normalized)).toList();
     }
 
     private static String rootMessage(Throwable throwable) {

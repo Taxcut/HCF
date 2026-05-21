@@ -47,6 +47,14 @@ public final class ClaimRepository {
         return MongoManager.toListFuture(mongo.collection("claims").find()).thenApply(documents -> documents.stream().map(this::decode).toList());
     }
 
+    public CompletableFuture<Void> delete(UUID id) {
+        if (!mongo.enabled()) {
+            memory.remove(id);
+            return CompletableFuture.completedFuture(null);
+        }
+        return MongoManager.toFuture(mongo.collection("claims").deleteOne(Filters.eq("id", id.toString()))).thenApply(ignored -> null);
+    }
+
     private Claim decode(Document document) {
         String owner = document.getString("owner");
         return new Claim(

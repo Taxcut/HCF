@@ -39,6 +39,9 @@ import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -46,14 +49,23 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.Plugin;
 
+import java.io.File;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class CoreCommand implements CommandExecutor {
+public final class CoreCommand implements CommandExecutor, TabCompleter {
+    private static final List<String> PLAYER_TARGET_COMMANDS = List.of(
+            "heal", "feed", "kill", "invsee", "message", "ping", "tp", "tphere", "ignore", "clear", "balance",
+            "pay", "lives", "playtime", "lastinv", "telllocation", "stats", "deathban", "killtag", "killstreak",
+            "livesmanage", "ecomanage", "setbal"
+    );
+
     private final Plugin plugin;
     private final ProfileService profiles;
     private final PlayerStateService states;
@@ -197,6 +209,38 @@ public final class CoreCommand implements CommandExecutor {
             sender.sendMessage(color("&8[&cHCF&8] &c" + exception.getMessage()));
         }
         return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        String name = command.getName().toLowerCase(Locale.ROOT);
+        if (args.length == 1) {
+            return switch (name) {
+                case "pvp" -> filter(List.of("enable"), args[0]);
+                case "livesmanage" -> filter(onlinePlayers(), args[0]);
+                case "kit" -> filter(kitNames(), args[0]);
+                case "shop", "settings", "help", "leaderboard", "leaderboards", "chatcolor" -> List.of();
+                case "gamemode" -> filter(List.of("survival", "creative", "adventure", "spectator", "0", "1", "2", "3"), args[0]);
+                case "world" -> filter(Bukkit.getWorlds().stream().map(World::getName).toList(), args[0]);
+                case "giveaway" -> filter(List.of("draw"), args[0]);
+                case "customtimer" -> filter(List.of("SOTW_Timer", "Sale_Timer", "Key_All"), args[0]);
+                case "redeem", "reclaim", "resetredeem", "resetreclaim", "cobble", "togglecobble", "togglesounds", "togglepm" -> List.of();
+                default -> PLAYER_TARGET_COMMANDS.contains(name) ? filter(onlinePlayers(), args[0]) : List.of();
+            };
+        }
+        if (args.length == 2) {
+            return switch (name) {
+                case "gamemode" -> filter(onlinePlayers(), args[1]);
+                case "livesmanage" -> filter(List.of("1", "2", "3", "5", "10"), args[1]);
+                case "ecomanage" -> filter(List.of("set", "add"), args[0]).isEmpty() ? List.of() : filter(onlinePlayers(), args[1]);
+                case "pay", "setbal", "deathban" -> filter(List.of("1", "5", "10", "30", "60"), args[1]);
+                default -> List.of();
+            };
+        }
+        if (args.length == 3 && name.equals("ecomanage")) {
+            return filter(List.of("100", "500", "1000", "5000"), args[2]);
+        }
+        return List.of();
     }
 
     private void help(CommandSender sender) {
@@ -670,8 +714,46 @@ public final class CoreCommand implements CommandExecutor {
 
     private void kit(CommandSender sender, String[] args) {
         Player player = player(sender);
-        player.getInventory().addItem(new ItemStack(Material.DIAMOND_SWORD), new ItemStack(Material.BOW), new ItemStack(Material.ARROW, 32));
-        player.sendMessage(color("&8[&cKit&8] &fStarter kit applied."));
+        YamlConfiguration config = YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), "kits.yml"));
+        ConfigurationSection kits = config.getConfigurationSection("kits");
+        if (kits == null || !config.getBoolean("enabled", true)) {
+            player.sendMessage(color("&8[&cKit&8] &cKits are currently disabled."));
+            return;
+        }
+        if (args.length == 0) {
+            player.sendMessage(color("&8&m----------------&8[ &cKits &8]&8&m----------------"));
+            kits.getKeys(false).stream()
+                    .filter(id -> config.getBoolean("kits." + id + ".enabled", true))
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .forEach(id -> player.sendMessage(color("&c/kit " + id + " &8- &f" + config.getString("kits." + id + ".display", id))));
+            player.sendMessage(color("&8&m--------------------------------------------------"));
+            return;
+        }
+        String id = args[0].toLowerCase(Locale.ROOT);
+        String base = "kits." + id;
+        if (!config.isConfigurationSection(base) || !config.getBoolean(base + ".enabled", true)) {
+            throw new IllegalArgumentException("Unknown kit.");
+        }
+        long cooldownMillis = Math.max(0L, config.getLong(base + ".cooldown-minutes", config.getLong("default-cooldown-minutes", 60L))) * 60_000L;
+        String cooldownKey = "kit:" + id;
+        var profile = profiles.cached(player.getUniqueId()).orElseThrow(() -> new IllegalArgumentException("Your profile is still loading."));
+        long remaining = profile.cooldownRemaining(cooldownKey);
+        if (remaining > 0L && !player.hasPermission("hcf.kit.bypass")) {
+            player.sendMessage(color("&8[&cKit&8] &cThat kit is on cooldown for &f" + formatDuration(remaining) + "&c."));
+            return;
+        }
+        for (String line : config.getStringList(base + ".items")) {
+            giveOrDrop(player, parseItem(line));
+        }
+        ConfigurationSection armor = config.getConfigurationSection(base + ".armor");
+        if (armor != null) {
+            setArmor(player, armor);
+        }
+        if (cooldownMillis > 0L) {
+            profile.cooldown(cooldownKey, cooldownMillis);
+            profiles.save(profile);
+        }
+        player.sendMessage(color("&8[&cKit&8] &fApplied kit &c" + config.getString(base + ".display", id) + "&f."));
     }
 
     private void eventCommand(CommandSender sender, String name, String[] args) {
@@ -769,6 +851,68 @@ public final class CoreCommand implements CommandExecutor {
         meta.setDisplayName(color(name));
         item.setItemMeta(meta);
         return item;
+    }
+
+    private ItemStack parseItem(String line) {
+        if (line == null || line.isBlank()) {
+            throw new IllegalArgumentException("Invalid blank kit item.");
+        }
+        String[] parts = line.trim().split("\\s+");
+        Material material = Material.matchMaterial(parts[0]);
+        if (material == null) {
+            throw new IllegalArgumentException("Invalid kit material: " + parts[0]);
+        }
+        int amount = parts.length >= 2 ? Math.max(1, Integer.parseInt(parts[1])) : 1;
+        ItemStack item = new ItemStack(material, amount);
+        for (int i = 2; i < parts.length; i++) {
+            String[] enchantParts = parts[i].split(":");
+            if (enchantParts.length != 2) {
+                continue;
+            }
+            Enchantment enchantment = enchantment(enchantParts[0]);
+            if (enchantment != null) {
+                item.addUnsafeEnchantment(enchantment, Math.max(1, Integer.parseInt(enchantParts[1])));
+            }
+        }
+        return item;
+    }
+
+    private void setArmor(Player player, ConfigurationSection armor) {
+        ItemStack[] contents = player.getInventory().getArmorContents();
+        if (armor.isString("boots")) {
+            contents[0] = parseItem(armor.getString("boots"));
+        }
+        if (armor.isString("leggings")) {
+            contents[1] = parseItem(armor.getString("leggings"));
+        }
+        if (armor.isString("chestplate")) {
+            contents[2] = parseItem(armor.getString("chestplate"));
+        }
+        if (armor.isString("helmet")) {
+            contents[3] = parseItem(armor.getString("helmet"));
+        }
+        player.getInventory().setArmorContents(contents);
+    }
+
+    private void giveOrDrop(Player player, ItemStack item) {
+        java.util.Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
+        leftovers.values().forEach(leftover -> player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+    }
+
+    private Enchantment enchantment(String name) {
+        String normalized = name.toLowerCase(Locale.ROOT).replace("-", "_");
+        String bukkit = switch (normalized) {
+            case "sharpness" -> "DAMAGE_ALL";
+            case "power" -> "ARROW_DAMAGE";
+            case "punch" -> "ARROW_KNOCKBACK";
+            case "flame" -> "ARROW_FIRE";
+            case "infinity" -> "ARROW_INFINITE";
+            case "protection", "prot" -> "PROTECTION_ENVIRONMENTAL";
+            case "unbreaking", "durability" -> "DURABILITY";
+            case "efficiency" -> "DIG_SPEED";
+            default -> normalized.toUpperCase(Locale.ROOT);
+        };
+        return Enchantment.getByName(bukkit);
     }
 
     private boolean executeParticleLink(Player player, String[] args) {
@@ -882,5 +1026,31 @@ public final class CoreCommand implements CommandExecutor {
         } catch (ReflectiveOperationException exception) {
             return -1;
         }
+    }
+
+    private static List<String> filter(List<String> options, String prefix) {
+        String normalized = prefix.toLowerCase(Locale.ROOT);
+        return options.stream()
+                .filter(option -> option.toLowerCase(Locale.ROOT).startsWith(normalized))
+                .toList();
+    }
+
+    private static List<String> onlinePlayers() {
+        return Bukkit.getOnlinePlayers().stream()
+                .map(Player::getName)
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+    }
+
+    private List<String> kitNames() {
+        YamlConfiguration config = YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), "kits.yml"));
+        ConfigurationSection kits = config.getConfigurationSection("kits");
+        if (kits == null || !config.getBoolean("enabled", true)) {
+            return List.of();
+        }
+        return kits.getKeys(false).stream()
+                .filter(id -> config.getBoolean("kits." + id + ".enabled", true))
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
     }
 }

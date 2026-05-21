@@ -28,6 +28,7 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
@@ -39,7 +40,19 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-public final class TeamCommand implements CommandExecutor {
+public final class TeamCommand implements CommandExecutor, TabCompleter {
+    private static final List<String> SUBCOMMANDS = List.of(
+            "create", "disband", "rename", "roster", "chat", "info", "manage", "invite", "uninvite", "join", "leave",
+            "focus", "unfocus", "stuck", "top", "rally", "unrally", "ally", "unally", "leader", "promote", "demote",
+            "lockclaim", "claim", "sethq", "hq", "kick", "withdraw", "deposit", "list", "map", "base", "falltrap",
+            "camp", "coords", "friendlyfire", "setdtr", "setregen", "setleader", "setbalance", "setpoints",
+            "setkothcaps", "forcedisband", "forcejoin", "forcekick", "forcepromote", "forcedemote", "teleport"
+    );
+    private static final List<String> PLAYER_ARGUMENTS = List.of("invite", "uninvite", "focus", "leader", "promote", "demote", "kick",
+            "setleader", "forcejoin", "forcekick", "forcepromote", "forcedemote");
+    private static final List<String> TEAM_ARGUMENTS = List.of("info", "roster", "ally", "unally", "setdtr", "setregen", "setbalance",
+            "setpoints", "setkothcaps", "forcedisband", "forcejoin", "teleport");
+
     private final TeamService teams;
     private final DtrService dtr;
     private final ClaimService claims;
@@ -142,6 +155,38 @@ public final class TeamCommand implements CommandExecutor {
             player.sendMessage(color("&8[&cTeam&8] &c" + exception.getMessage()));
         }
         return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 1) {
+            return filter(SUBCOMMANDS, args[0]);
+        }
+        String sub = args[0].toLowerCase(Locale.ROOT);
+        if (args.length == 2) {
+            if (PLAYER_ARGUMENTS.contains(sub)) {
+                return filter(onlinePlayers(), args[1]);
+            }
+            if (TEAM_ARGUMENTS.contains(sub)) {
+                return filter(teamNames(), args[1]);
+            }
+            if (sub.equals("chat")) {
+                return filter(List.of("public", "team", "ally"), args[1]);
+            }
+            if (sub.equals("list") || sub.equals("sort")) {
+                return filter(List.of("online", "balance", "points", "dtr", "members"), args[1]);
+            }
+        }
+        if (args.length == 3 && (sub.equals("setleader") || sub.equals("forcejoin"))) {
+            return filter(onlinePlayers(), args[2]);
+        }
+        if (args.length == 4 && sub.equals("forcejoin")) {
+            return filter(List.of("member", "captain", "co_leader", "leader"), args[3]);
+        }
+        if (args.length == 3 && sub.equals("setregen")) {
+            return filter(List.of("enabled", "disabled"), args[2]);
+        }
+        return java.util.Collections.emptyList();
     }
 
     private void create(Player player, String[] args) {
@@ -850,6 +895,21 @@ public final class TeamCommand implements CommandExecutor {
             cursor = cursor.getCause();
         }
         return cursor.getMessage() == null ? cursor.getClass().getSimpleName() : cursor.getMessage();
+    }
+
+    private static List<String> filter(List<String> options, String prefix) {
+        String normalized = prefix.toLowerCase(Locale.ROOT);
+        return options.stream()
+                .filter(option -> option.toLowerCase(Locale.ROOT).startsWith(normalized))
+                .toList();
+    }
+
+    private List<String> teamNames() {
+        return teams.teams().stream().map(Team::name).sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    private static List<String> onlinePlayers() {
+        return Bukkit.getOnlinePlayers().stream().map(Player::getName).sorted(String.CASE_INSENSITIVE_ORDER).toList();
     }
 
     private static String color(String text) {

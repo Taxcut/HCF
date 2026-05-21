@@ -61,6 +61,24 @@ public final class ClaimService implements HCFService {
         });
     }
 
+    public CompletableFuture<Claim> delete(String name) {
+        Claim claim = byName(name).orElse(null);
+        if (claim == null) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Claim not found."));
+        }
+        synchronized (this) {
+            claims.remove(claim.id());
+            index.rebuild(claims.values());
+        }
+        return repository.delete(claim.id()).thenApply(ignored -> claim).exceptionally(throwable -> {
+            synchronized (this) {
+                claims.put(claim.id(), claim);
+                index.rebuild(claims.values());
+            }
+            throw new java.util.concurrent.CompletionException(throwable);
+        });
+    }
+
     public Collection<Claim> claims() {
         return claims.values();
     }

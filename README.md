@@ -15,6 +15,11 @@ scoreboard/tab/nametag services, staff tools, menus, combat timers, teams, and e
 
 ## Build
 
+This legacy HCF build targets Spigot/custom Spigot 1.7/1.8 APIs but intentionally compiles for Java 21.
+The server JVM must run Java 21 or newer, and the custom Spigot must accept Java 21 class files. Downgrading to
+Java 8 would require removing records, switch expressions, pattern matching, `List.of`, `Map.of`, and other modern
+language/API usage across the codebase.
+
 ```powershell
 ./gradlew shadowJar
 ```
