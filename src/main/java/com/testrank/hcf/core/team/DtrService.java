@@ -2,6 +2,7 @@ package com.testrank.hcf.core.team;
 
 import com.testrank.hcf.core.api.HCFService;
 import com.testrank.hcf.core.config.HCFSettings;
+import com.testrank.hcf.core.particle.ParticleIntelService;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -14,13 +15,15 @@ public final class DtrService implements HCFService {
     private final Plugin plugin;
     private final TeamService teams;
     private final HCFSettings settings;
+    private final ParticleIntelService intel;
     private final Map<UUID, Long> frozenUntil = new ConcurrentHashMap<>();
     private int taskId = -1;
 
-    public DtrService(Plugin plugin, TeamService teams, HCFSettings settings) {
+    public DtrService(Plugin plugin, TeamService teams, HCFSettings settings, ParticleIntelService intel) {
         this.plugin = plugin;
         this.teams = teams;
         this.settings = settings;
+        this.intel = intel;
     }
 
     @Override
@@ -30,11 +33,15 @@ public final class DtrService implements HCFService {
 
     public void handleDeath(Player player) {
         teams.byPlayer(player.getUniqueId()).ifPresent(team -> {
-            team.dtr(team.dtr() - 1.0D);
+            double before = team.dtr();
+            double after = before - 1.0D;
+            team.dtr(after);
             team.frozen(true);
-            frozenUntil.put(team.id(), System.currentTimeMillis() + settings.factionFreezeDurationSeconds() * 1000L);
+            long frozenMillis = settings.factionFreezeDurationSeconds() * 1000L;
+            frozenUntil.put(team.id(), System.currentTimeMillis() + frozenMillis);
             team.log("DTR penalty from death: " + player.getUniqueId());
             teams.save(team);
+            intel.dtrImpact(player, team, before, team.dtr(), "death", frozenMillis);
         });
     }
 

@@ -5,6 +5,7 @@ import com.testrank.hcf.core.claim.ClaimService;
 import com.testrank.hcf.core.claim.ClaimType;
 import com.testrank.hcf.core.config.HCFSettings;
 import com.testrank.hcf.core.economy.EconomyService;
+import com.testrank.hcf.core.particle.ParticleIntelService;
 import com.testrank.hcf.core.team.TeamRole;
 import com.testrank.hcf.core.team.TeamService;
 import com.testrank.hcf.core.threading.Threading;
@@ -27,15 +28,18 @@ public final class ClaimWandListener implements Listener {
     private final EconomyService economy;
     private final HCFSettings settings;
     private final Threading threading;
+    private final ParticleIntelService intel;
     private final Set<UUID> purchasing = ConcurrentHashMap.newKeySet();
 
-    public ClaimWandListener(ClaimSelectionService selections, ClaimService claims, TeamService teams, EconomyService economy, HCFSettings settings, Threading threading) {
+    public ClaimWandListener(ClaimSelectionService selections, ClaimService claims, TeamService teams, EconomyService economy, HCFSettings settings, Threading threading,
+                             ParticleIntelService intel) {
         this.selections = selections;
         this.claims = claims;
         this.teams = teams;
         this.economy = economy;
         this.settings = settings;
         this.threading = threading;
+        this.intel = intel;
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -112,16 +116,25 @@ public final class ClaimWandListener implements Listener {
             claims.create(team.id(), team.name(), selection.get().first().getWorld().getName(),
                     selection.get().first().getBlockX(), selection.get().first().getBlockZ(),
                     selection.get().second().getBlockX(), selection.get().second().getBlockZ(), ClaimType.PLAYER)
-                    .thenRun(() -> threading.runSync(() -> {
+                    .thenAccept(claim -> threading.runSync(() -> {
                         purchasing.remove(player.getUniqueId());
                         removeWand(player);
                         selections.clear(player);
+                        intel.claimIntel(player, team, claim, price, area);
                         player.sendMessage(Text.color("&8[&cClaim&8] &fPurchased &c" + area + " blocks &ffor &a$" + price + "&f."));
                     }))
                     .exceptionally(throwable -> {
                         purchasing.remove(player.getUniqueId());
                         economy.add(player.getUniqueId(), price);
-                        threading.runSync(() -> player.sendMessage(Text.color("&8[&cClaim&8] &cCould not create claim: " + rootMessage(throwable))));
+                        threading.runSync(() -> {
+                            String reason = rootMessage(throwable);
+                            intel.raidAbuse(player, team, "claim_create_failed", java.util.Map.of(
+                                    "reason", reason,
+                                    "area", area,
+                                    "price", price
+                            ));
+                            player.sendMessage(Text.color("&8[&cClaim&8] &cCould not create claim: " + reason));
+                        });
                         return null;
                     });
         }).exceptionally(throwable -> {

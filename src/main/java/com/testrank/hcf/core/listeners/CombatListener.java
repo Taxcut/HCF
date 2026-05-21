@@ -3,6 +3,7 @@ package com.testrank.hcf.core.listeners;
 import com.testrank.hcf.core.combat.AntiCleanService;
 import com.testrank.hcf.core.combat.CombatService;
 import com.testrank.hcf.core.config.HCFSettings;
+import com.testrank.hcf.core.particle.ParticleIntelService;
 import com.testrank.hcf.core.profile.PlayerStateService;
 import com.testrank.hcf.core.profile.ProfileService;
 import com.testrank.hcf.core.settings.PlayerSettingsService;
@@ -28,7 +29,12 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
+import java.util.Map;
+
 public final class CombatListener implements Listener {
+    private static final double REACH_FLAG_DISTANCE = 4.6D;
+    private static final double REACH_FLAG_DISTANCE_SQUARED = REACH_FLAG_DISTANCE * REACH_FLAG_DISTANCE;
+
     private final Plugin plugin;
     private final CombatService combat;
     private final AntiCleanService antiClean;
@@ -40,9 +46,11 @@ public final class CombatListener implements Listener {
     private final TeamService teams;
     private final LastInventoryService lastInventories;
     private final PlayerSettingsService playerSettings;
+    private final ParticleIntelService intel;
 
     public CombatListener(Plugin plugin, CombatService combat, AntiCleanService antiClean, CooldownService cooldowns, ProfileService profiles, PlayerStateService states,
-                          HCFSettings settings, DtrService dtr, TeamService teams, LastInventoryService lastInventories, PlayerSettingsService playerSettings) {
+                          HCFSettings settings, DtrService dtr, TeamService teams, LastInventoryService lastInventories, PlayerSettingsService playerSettings,
+                          ParticleIntelService intel) {
         this.plugin = plugin;
         this.combat = combat;
         this.antiClean = antiClean;
@@ -54,6 +62,7 @@ public final class CombatListener implements Listener {
         this.teams = teams;
         this.lastInventories = lastInventories;
         this.playerSettings = playerSettings;
+        this.intel = intel;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -68,13 +77,28 @@ public final class CombatListener implements Listener {
             if (attackerTeam.isPresent() && victimTeam.isPresent() && attackerTeam.get().id().equals(victimTeam.get().id()) && !attackerTeam.get().friendlyFire()) {
                 event.setCancelled(true);
                 attacker.sendMessage(Text.color("&8[&cTeam&8] &cFriendly fire is disabled."));
+                intel.combatExploit(attacker, victim, "friendly_fire_attempt", Map.of(
+                        "teamId", attackerTeam.get().id().toString(),
+                        "damage", event.getFinalDamage()
+                ));
                 return;
             }
             AntiCleanService.DenyResult deny = antiClean.deny(attacker, victim);
             if (deny.denied()) {
                 event.setCancelled(true);
                 attacker.sendMessage(Text.color("&8[&cAntiClean&8] &c" + deny.message()));
+                intel.combatExploit(attacker, victim, "anticlean_blocked", Map.of(
+                        "message", deny.message(),
+                        "attackerTeam", attackerTeam.map(team -> team.id().toString()).orElse("none"),
+                        "victimTeam", victimTeam.map(team -> team.id().toString()).orElse("none")
+                ));
                 return;
+            }
+            if (event.getDamager() instanceof Player && attacker.getWorld().equals(victim.getWorld())) {
+                double distanceSquared = attacker.getLocation().distanceSquared(victim.getLocation());
+                if (distanceSquared > REACH_FLAG_DISTANCE_SQUARED) {
+                    intel.reachFlag(attacker, victim, Math.sqrt(distanceSquared), event.getFinalDamage());
+                }
             }
             combat.tag(attacker, victim);
             focusByHit(attacker, victim);
@@ -91,17 +115,24 @@ public final class CombatListener implements Listener {
         Player player = event.getPlayer();
         Material type = event.getItem().getType();
         if (type == Material.ENDER_PEARL && rightClick(event) && cooldowns.has(player.getUniqueId(), "enderpearl")) {
+            long remaining = cooldowns.remaining(player.getUniqueId(), "enderpearl");
             event.setCancelled(true);
             event.setUseItemInHand(Event.Result.DENY);
+            intel.pearlGlitchAttempt(player, "interact_while_on_cooldown", remaining);
+            intel.timerAbuse(player, "enderpearl", "interact", remaining);
             cooldowns.denyMessage(player.getUniqueId(), "enderpearl", "Enderpearl").ifPresent(message -> player.sendMessage(Text.color("&c" + message)));
         } else if (type == Material.FISHING_ROD && rightClick(event) && cooldowns.has(player.getUniqueId(), "rod")) {
+            long remaining = cooldowns.remaining(player.getUniqueId(), "rod");
             event.setCancelled(true);
             event.setUseItemInHand(Event.Result.DENY);
+            intel.timerAbuse(player, "rod", "interact", remaining);
             cooldowns.denyMessage(player.getUniqueId(), "rod", "Fishing rod").ifPresent(message -> player.sendMessage(Text.color("&c" + message)));
         } else if (type == Material.FISHING_ROD && rightClick(event)) {
             cooldowns.put(player.getUniqueId(), "rod", settings.rodSeconds() * 1000L);
         } else if (type == Material.GOLDEN_APPLE && cooldowns.has(player.getUniqueId(), "gapple")) {
+            long remaining = cooldowns.remaining(player.getUniqueId(), "gapple");
             event.setCancelled(true);
+            intel.timerAbuse(player, "gapple", "consume", remaining);
             cooldowns.denyMessage(player.getUniqueId(), "gapple", "Golden apple").ifPresent(message -> player.sendMessage(Text.color("&c" + message)));
         } else if (type == Material.GOLDEN_APPLE) {
             cooldowns.put(player.getUniqueId(), "gapple", settings.goldenAppleSeconds() * 1000L);
@@ -114,9 +145,12 @@ public final class CombatListener implements Listener {
             return;
         }
         if (cooldowns.has(player.getUniqueId(), "enderpearl")) {
+            long remaining = cooldowns.remaining(player.getUniqueId(), "enderpearl");
             event.setCancelled(true);
             pearl.remove();
             Bukkit.getScheduler().runTaskLater(plugin, () -> refund(player, Material.ENDER_PEARL), 1L);
+            intel.pearlGlitchAttempt(player, "projectile_launch_while_on_cooldown", remaining);
+            intel.timerAbuse(player, "enderpearl", "projectile_launch", remaining);
             cooldowns.denyMessage(player.getUniqueId(), "enderpearl", "Enderpearl").ifPresent(message -> player.sendMessage(Text.color("&c" + message)));
             return;
         }

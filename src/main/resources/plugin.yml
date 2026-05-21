@@ -219,6 +219,8 @@ commands:
   chatcolor:
     description: Open chat color selector.
     aliases: [chatcolors]
+  link:
+    description: Forward account linking to Particle Core.
   team:
     description: Team and faction commands.
     aliases: [f, faction]

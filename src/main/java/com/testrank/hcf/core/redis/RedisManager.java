@@ -67,13 +67,21 @@ public final class RedisManager implements HCFService {
     }
 
     public CompletableFuture<Void> publish(String channel, String payload) {
+        return publishTo("hcf:" + channel, serverId + "|" + payload, channel);
+    }
+
+    public CompletableFuture<Void> publishRaw(String channel, String payload) {
+        return publishTo(channel, payload, channel);
+    }
+
+    private CompletableFuture<Void> publishTo(String redisChannel, String payload, String logChannel) {
         if (!available) {
             return CompletableFuture.completedFuture(null);
         }
         RedisAsyncCommands<String, String> commands = connection.async();
-        return commands.publish("hcf:" + channel, serverId + "|" + payload).thenAccept(ignored -> {}).toCompletableFuture()
+        return commands.publish(redisChannel, payload).thenAccept(ignored -> {}).toCompletableFuture()
                 .exceptionally(throwable -> {
-                    Logger.getLogger("HCF").warning("Redis publish failed on channel " + channel + ": " + throwable.getMessage());
+                    Logger.getLogger("HCF").warning("Redis publish failed on channel " + logChannel + ": " + throwable.getMessage());
                     return null;
                 });
     }

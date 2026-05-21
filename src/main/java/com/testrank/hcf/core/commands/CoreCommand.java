@@ -14,6 +14,7 @@ import com.testrank.hcf.core.menu.HelpMenu;
 import com.testrank.hcf.core.menu.LeaderboardMenu;
 import com.testrank.hcf.core.menu.MenuService;
 import com.testrank.hcf.core.menu.SettingsMenu;
+import com.testrank.hcf.core.particle.ParticleIntelService;
 import com.testrank.hcf.core.shop.ShopMenu;
 import com.testrank.hcf.core.shop.ShopService;
 import com.testrank.hcf.core.profile.PlayerStateService;
@@ -76,6 +77,7 @@ public final class CoreCommand implements CommandExecutor {
     private final PlayerSettingsService playerSettings;
     private final ShopService shop;
     private final LeaderboardService leaderboardService;
+    private final ParticleIntelService intel;
     private final Set<UUID> giveawayEntries = ConcurrentHashMap.newKeySet();
     private Location spawn;
     private Location endExit;
@@ -84,7 +86,7 @@ public final class CoreCommand implements CommandExecutor {
                        ReportService reports, LastInventoryService lastInventories, TeamService teams, ClaimService claims,
                        DtrService dtr, CombatService combat, PvpProtectionService pvp, ChatService chat, EventService events, KothService koths,
                        SotwService sotw, EotwService eotw, GlobalTimerService timers, Threading threading, MenuService menus,
-                       PlayerSettingsService playerSettings, ShopService shop, LeaderboardService leaderboardService) {
+                       PlayerSettingsService playerSettings, ShopService shop, LeaderboardService leaderboardService, ParticleIntelService intel) {
         this.plugin = plugin;
         this.profiles = profiles;
         this.states = states;
@@ -108,6 +110,7 @@ public final class CoreCommand implements CommandExecutor {
         this.playerSettings = playerSettings;
         this.shop = shop;
         this.leaderboardService = leaderboardService;
+        this.intel = intel;
         World world = Bukkit.getWorlds().get(0);
         this.spawn = configuredLocation(plugin, "spawn", world.getSpawnLocation());
         this.endExit = world.getSpawnLocation();
@@ -187,6 +190,7 @@ public final class CoreCommand implements CommandExecutor {
                 case "giveaway" -> giveaway(sender, args);
                 case "shop" -> shop(sender);
                 case "chatcolor", "chatcolors" -> chatColor(sender);
+                case "link" -> link(sender, args);
                 default -> help(sender);
             }
         } catch (RuntimeException exception) {
@@ -596,6 +600,7 @@ public final class CoreCommand implements CommandExecutor {
     private void stats(CommandSender sender, String[] args) {
         Player target = args.length >= 1 ? target(args[0]) : player(sender);
         profiles.cached(target.getUniqueId()).ifPresent(profile -> {
+            intel.profileExport(profile, teams.byPlayer(target.getUniqueId()).orElse(null), "stats_command");
             int kills = profile.kills();
             int deaths = profile.deaths();
             String kdr = deaths == 0 ? "Infinity" : String.format(Locale.US, "%.2f", (double) kills / deaths);
@@ -623,7 +628,11 @@ public final class CoreCommand implements CommandExecutor {
     private void deathban(CommandSender sender, String[] args) {
         require(sender, "hcf.staff");
         Player target = target(arg(args, 0, "/deathban <player> <minutes>"));
-        states.deathban(target.getUniqueId(), positiveLong(arg(args, 1, "/deathban <player> <minutes>")) * 60_000L);
+        long minutes = positiveLong(arg(args, 1, "/deathban <player> <minutes>"));
+        states.deathban(target.getUniqueId(), minutes * 60_000L);
+        if (sender instanceof Player staffer) {
+            intel.staffNoteHook(staffer, target.getUniqueId(), target.getName(), "deathban", "Deathbanned for " + minutes + " minutes");
+        }
         sender.sendMessage(color("&8[&cStaff&8] &fDeathbanned &c" + target.getName() + "&f."));
     }
 
@@ -695,7 +704,26 @@ public final class CoreCommand implements CommandExecutor {
         String reason = args.length == 0 ? "No reason provided" : join(args, 0);
         Bukkit.getOnlinePlayers().stream().filter(staffer -> staffer.hasPermission("hcf.staff"))
                 .forEach(staffer -> staffer.sendMessage(color("&8[&4Panic&8] &c" + player.getName() + " &fneeds help: &c" + reason)));
+        intel.staffNoteHook(player, player.getUniqueId(), player.getName(), "panic", reason);
         player.sendMessage(color("&8[&cPanic&8] &fOnline staff have been alerted."));
+    }
+
+    private void link(CommandSender sender, String[] args) {
+        Player player = player(sender);
+        if (args.length == 0 || !args[0].equalsIgnoreCase("discord")) {
+            player.sendMessage(color("&8[&cLink&8] &fUsage: &c/link discord"));
+            return;
+        }
+        boolean particleAvailable = Bukkit.getPluginManager().getPlugin("ParticleCore") != null
+                || Bukkit.getPluginManager().getPlugin("Particle-Core") != null
+                || Bukkit.getPluginManager().getPlugin("Particle") != null;
+        boolean forwarded = executeParticleLink(player, args);
+        intel.accountLinkForward(player, "/link discord", particleAvailable);
+        if (!forwarded) {
+            player.sendMessage(color(particleAvailable
+                    ? "&8[&cLink&8] &cParticle Core is loaded, but its link command was not reachable."
+                    : "&8[&cLink&8] &cParticle Core is not available on this server."));
+        }
     }
 
     private void social(CommandSender sender, String name) {
@@ -741,6 +769,34 @@ public final class CoreCommand implements CommandExecutor {
         meta.setDisplayName(color(name));
         item.setItemMeta(meta);
         return item;
+    }
+
+    private boolean executeParticleLink(Player player, String[] args) {
+        Command command = particleNamespacedCommand();
+        if (command != null) {
+            return command.execute(player, command.getName(), args);
+        }
+        org.bukkit.command.PluginCommand link = Bukkit.getPluginCommand("link");
+        if (link != null && link.getPlugin() != plugin) {
+            return link.execute(player, "link", args);
+        }
+        return false;
+    }
+
+    private Command particleNamespacedCommand() {
+        String[] candidates = {"particlecore:link", "particle-core:link", "particle:link"};
+        try {
+            Object commandMap = Bukkit.getServer().getClass().getMethod("getCommandMap").invoke(Bukkit.getServer());
+            java.lang.reflect.Method getCommand = commandMap.getClass().getMethod("getCommand", String.class);
+            for (String candidate : candidates) {
+                Object command = getCommand.invoke(commandMap, candidate);
+                if (command instanceof Command bukkitCommand) {
+                    return bukkitCommand;
+                }
+            }
+        } catch (ReflectiveOperationException ignored) {
+        }
+        return null;
     }
 
     private Player player(CommandSender sender) {

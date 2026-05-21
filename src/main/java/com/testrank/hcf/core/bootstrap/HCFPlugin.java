@@ -48,6 +48,7 @@ import com.testrank.hcf.core.menu.MenuService;
 import com.testrank.hcf.core.mongo.MongoManager;
 import com.testrank.hcf.core.nametag.NametagService;
 import com.testrank.hcf.core.packets.PacketHookService;
+import com.testrank.hcf.core.particle.ParticleIntelService;
 import com.testrank.hcf.core.partneritems.PartnerItemService;
 import com.testrank.hcf.core.profile.PlayerStateService;
 import com.testrank.hcf.core.profile.ProfileRepository;
@@ -109,10 +110,11 @@ public final class HCFPlugin extends JavaPlugin {
         TpsService tps = services.register(TpsService.class, new TpsService(this));
         MongoManager mongo = services.register(MongoManager.class, new MongoManager(settings));
         RedisManager redis = services.register(RedisManager.class, new RedisManager(settings));
+        ParticleIntelService particleIntel = services.register(ParticleIntelService.class, new ParticleIntelService(this, redis, threading));
         ProfileService profiles = services.register(ProfileService.class, new ProfileService(new ProfileRepository(mongo), redis));
         PlayerStateService states = services.register(PlayerStateService.class, new PlayerStateService(settings, profiles));
         TeamService teams = services.register(TeamService.class, new TeamService(new TeamRepository(mongo), profiles, redis, settings));
-        DtrService dtr = services.register(DtrService.class, new DtrService(this, teams, settings));
+        DtrService dtr = services.register(DtrService.class, new DtrService(this, teams, settings, particleIntel));
         ClaimService claims = services.register(ClaimService.class, new ClaimService(new ClaimRepository(mongo)));
         ClaimSelectionService claimSelections = services.register(ClaimSelectionService.class, new ClaimSelectionService());
         CombatService combat = services.register(CombatService.class, new CombatService(settings));
@@ -136,7 +138,7 @@ public final class HCFPlugin extends JavaPlugin {
         services.register(NametagService.class, new NametagService(this, teams, combat, clients, staff, permissions, playerSettings));
         PvpClassService pvpClasses = services.register(PvpClassService.class, new PvpClassService(this, profiles, settings));
         services.register(ScoreboardService.class, new ScoreboardService(this, profiles, combat, antiClean, cooldowns, events, koths, globalTimers, sotw, staff, tps, teams, pvpClasses, playerSettings));
-        services.register(PacketHookService.class, new PacketHookService(this, clients));
+        services.register(PacketHookService.class, new PacketHookService(this, clients, particleIntel));
         ChatService chat = services.register(ChatService.class, new ChatService(teams, permissions, playerSettings));
         EconomyService economy = services.register(EconomyService.class, new EconomyService(profiles, redis));
         ShopService shop = services.register(ShopService.class, new ShopService(this, economy, mongo, threading));
@@ -155,11 +157,11 @@ public final class HCFPlugin extends JavaPlugin {
         services.startAll();
         registerListeners(
                 new CommandBlockListener(),
-                new ProfileListener(profiles, states, pvpProtection, waypoints, threading, playerSettings),
-                new CombatListener(this, combat, antiClean, cooldowns, profiles, states, settings, dtr, teams, lastInventories, playerSettings),
+                new ProfileListener(profiles, states, pvpProtection, waypoints, threading, playerSettings, teams, particleIntel),
+                new CombatListener(this, combat, antiClean, cooldowns, profiles, states, settings, dtr, teams, lastInventories, playerSettings, particleIntel),
                 new LogoutListener(states),
                 new ClaimMovementListener(claims, teams, playerSettings),
-                new ClaimWandListener(claimSelections, claims, teams, economy, settings, threading),
+                new ClaimWandListener(claimSelections, claims, teams, economy, settings, threading, particleIntel),
                 new ChatListener(chat, teams, threading),
                 new MenuListener(services.require(MenuService.class)),
                 new ReadOnlyInventoryListener(),
@@ -171,11 +173,11 @@ public final class HCFPlugin extends JavaPlugin {
                 new StaffListener(staff, states),
                 glowstone
         );
-        command("team").setExecutor(new TeamCommand(teams, dtr, claims, claimSelections, threading, economy, states, chat, waypoints, settings, this, menus));
+        command("team").setExecutor(new TeamCommand(teams, dtr, claims, claimSelections, threading, economy, states, chat, waypoints, settings, this, menus, particleIntel));
         command("staff").setExecutor(new StaffCommand(staff));
         command("freeze").setExecutor(new FreezeCommand(staff));
         HCFCommand adminCommand = new HCFCommand(claims, claimSelections, teams, partnerItems, koths, eotw, sotw, globalTimers, threading);
-        CoreCommand coreCommand = new CoreCommand(this, profiles, states, economy, staff, reports, lastInventories, teams, claims, dtr, combat, pvpProtection, chat, events, koths, sotw, eotw, globalTimers, threading, menus, playerSettings, shop, leaderboards);
+        CoreCommand coreCommand = new CoreCommand(this, profiles, states, economy, staff, reports, lastInventories, teams, claims, dtr, combat, pvpProtection, chat, events, koths, sotw, eotw, globalTimers, threading, menus, playerSettings, shop, leaderboards, particleIntel);
         command("hcf").setExecutor(adminCommand);
         command("claimwand").setExecutor(adminCommand);
         command("claim").setExecutor(adminCommand);
@@ -359,7 +361,7 @@ public final class HCFPlugin extends JavaPlugin {
                 "togglecobble", "togglesounds", "deathban", "pay", "killtag", "schedule", "customtimer", "keyall",
                 "reportsmenu", "requestsmenu", "staffbuild", "spawner", "killstreak", "kit", "conquest", "ktk",
                 "purge", "citadel", "mountain", "systemteam", "setbal", "changelog", "panic",
-                "discord", "teamspeak", "twitter", "store", "social", "website", "media", "giveaway", "shop", "chatcolor"
+                "discord", "teamspeak", "twitter", "store", "social", "website", "media", "giveaway", "shop", "chatcolor", "link"
         };
         for (String name : names) {
             command(name).setExecutor(coreCommand);

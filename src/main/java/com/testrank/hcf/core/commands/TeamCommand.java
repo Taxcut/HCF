@@ -10,6 +10,7 @@ import com.testrank.hcf.core.config.HCFSettings;
 import com.testrank.hcf.core.economy.EconomyService;
 import com.testrank.hcf.core.menu.MenuService;
 import com.testrank.hcf.core.menu.TeamManageMenu;
+import com.testrank.hcf.core.particle.ParticleIntelService;
 import com.testrank.hcf.core.profile.PlayerStateService;
 import com.testrank.hcf.core.team.DtrService;
 import com.testrank.hcf.core.team.Team;
@@ -51,11 +52,12 @@ public final class TeamCommand implements CommandExecutor {
     private final HCFSettings settings;
     private final Plugin plugin;
     private final MenuService menus;
+    private final ParticleIntelService intel;
     private final Map<UUID, List<Location>> mapViews = new java.util.concurrent.ConcurrentHashMap<>();
 
     public TeamCommand(TeamService teams, DtrService dtr, ClaimService claims, ClaimSelectionService selections,
                        Threading threading, EconomyService economy, PlayerStateService states, ChatService chat, WaypointService waypoints,
-                       HCFSettings settings, Plugin plugin, MenuService menus) {
+                       HCFSettings settings, Plugin plugin, MenuService menus, ParticleIntelService intel) {
         this.teams = teams;
         this.dtr = dtr;
         this.claims = claims;
@@ -68,6 +70,7 @@ public final class TeamCommand implements CommandExecutor {
         this.settings = settings;
         this.plugin = plugin;
         this.menus = menus;
+        this.intel = intel;
     }
 
     @Override
@@ -145,6 +148,8 @@ public final class TeamCommand implements CommandExecutor {
         String name = arg(args, 1, "/team create <name>");
         teams.create(name, player.getUniqueId()).thenAccept(team ->
                 threading.runSync(() -> {
+                    intel.factionPunishmentLink(player, team, "created", Map.of("leader", player.getUniqueId().toString()));
+                    intel.factionHistory(player.getUniqueId(), player.getName(), team, "created", player.getUniqueId());
                     player.sendMessage(color("&8[&cTeam&8] &fCreated faction &c" + name + "&f."));
                     Bukkit.broadcastMessage(color("&eFaction &c" + name + " &ehas been &acreated by &f" + player.getName()));
                     Title.send(player, "&c&lFaction Created", "&fYou are now leading &c" + name + "&f.");
@@ -157,7 +162,14 @@ public final class TeamCommand implements CommandExecutor {
     private void disband(Player player) {
         Team team = ownTeam(player);
         requireRole(player, team, TeamRole.LEADER);
-        complete(player, teams.disband(team), "&fFaction &c" + team.name() + " &fwas disbanded.");
+        teams.disband(team).thenRun(() -> threading.runSync(() -> {
+            intel.factionPunishmentLink(player, team, "disbanded", Map.of("actor", player.getUniqueId().toString()));
+            team.members().keySet().forEach(member -> intel.factionHistory(member, memberName(member), team, "disbanded", player.getUniqueId()));
+            player.sendMessage(color("&8[&cTeam&8] &fFaction &c" + team.name() + " &fwas disbanded."));
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> player.sendMessage(color("&8[&cTeam&8] &c" + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void rename(Player player, String[] args) {
@@ -227,11 +239,25 @@ public final class TeamCommand implements CommandExecutor {
     }
 
     private void join(Player player) {
-        complete(player, teams.acceptInvite(player.getUniqueId()), "&fJoined your new faction.");
+        teams.acceptInvite(player.getUniqueId()).thenAccept(team -> threading.runSync(() -> {
+            intel.factionHistory(player.getUniqueId(), player.getName(), team, "joined", player.getUniqueId());
+            intel.factionPunishmentLink(player, team, "joined", Map.of("member", player.getUniqueId().toString()));
+            player.sendMessage(color("&8[&cTeam&8] &fJoined your new faction."));
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> player.sendMessage(color("&8[&cTeam&8] &c" + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void leave(Player player) {
-        complete(player, teams.leave(player.getUniqueId()), "&fYou left your faction.");
+        Team team = ownTeam(player);
+        teams.leave(player.getUniqueId()).thenRun(() -> threading.runSync(() -> {
+            intel.factionHistory(player.getUniqueId(), player.getName(), team, "left", player.getUniqueId());
+            player.sendMessage(color("&8[&cTeam&8] &fYou left your faction."));
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> player.sendMessage(color("&8[&cTeam&8] &c" + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void focus(Player player, String[] args) {
@@ -339,7 +365,16 @@ public final class TeamCommand implements CommandExecutor {
         int nextOrdinal = current.ordinal() + (promote ? 1 : -1);
         int cap = forced ? TeamRole.LEADER.ordinal() : TeamRole.CO_LEADER.ordinal();
         TeamRole next = TeamRole.values()[Math.max(TeamRole.MEMBER.ordinal(), Math.min(cap, nextOrdinal))];
-        complete(player, teams.setRole(team, target.getUniqueId(), next), "&fSet &c" + target.getName() + " &fto &c" + pretty(next.name()) + "&f.");
+        teams.setRole(team, target.getUniqueId(), next).thenRun(() -> threading.runSync(() -> {
+            intel.factionPunishmentLink(player, team, forced ? "force_role_changed" : "role_changed", Map.of(
+                    "target", target.getUniqueId().toString(),
+                    "role", next.name()
+            ));
+            player.sendMessage(color("&8[&cTeam&8] &fSet &c" + target.getName() + " &fto &c" + pretty(next.name()) + "&f."));
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> player.sendMessage(color("&8[&cTeam&8] &c" + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void lockClaim(Player player) {
@@ -386,7 +421,14 @@ public final class TeamCommand implements CommandExecutor {
         if (team.members().get(target.getUniqueId()).ordinal() >= team.members().get(player.getUniqueId()).ordinal()) {
             throw new IllegalArgumentException("You cannot kick that role.");
         }
-        complete(player, teams.kick(team, target.getUniqueId()), "&fKicked &c" + target.getName() + " &ffrom the faction.");
+        teams.kick(team, target.getUniqueId()).thenRun(() -> threading.runSync(() -> {
+            intel.factionHistory(target.getUniqueId(), target.getName(), team, "kicked", player.getUniqueId());
+            intel.factionPunishmentLink(player, team, "member_kicked", Map.of("target", target.getUniqueId().toString()));
+            player.sendMessage(color("&8[&cTeam&8] &fKicked &c" + target.getName() + " &ffrom the faction."));
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> player.sendMessage(color("&8[&cTeam&8] &c" + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void withdraw(Player player, String[] args) {
@@ -501,7 +543,9 @@ public final class TeamCommand implements CommandExecutor {
     private void setDtr(Player player, String[] args) {
         requireAdmin(player);
         Team team = team(arg(args, 1, "/team setdtr <team> <dtr>"));
+        double before = team.dtr();
         team.dtr(Double.parseDouble(arg(args, 2, "/team setdtr <team> <dtr>")));
+        intel.dtrImpact(player, team, before, team.dtr(), "admin_setdtr", 0L);
         complete(player, teams.save(team), "&fSet &c" + team.name() + " &fDTR to &c" + format(team.dtr()) + "&f.");
     }
 
@@ -549,7 +593,14 @@ public final class TeamCommand implements CommandExecutor {
     private void forceDisband(Player player, String[] args) {
         requireAdmin(player);
         Team team = team(arg(args, 1, "/team forcedisband <team>"));
-        complete(player, teams.disband(team), "&fForce disbanded &c" + team.name() + "&f.");
+        teams.disband(team).thenRun(() -> threading.runSync(() -> {
+            intel.factionPunishmentLink(player, team, "force_disbanded", Map.of("actor", player.getUniqueId().toString()));
+            team.members().keySet().forEach(member -> intel.factionHistory(member, memberName(member), team, "force_disbanded", player.getUniqueId()));
+            player.sendMessage(color("&8[&cTeam&8] &fForce disbanded &c" + team.name() + "&f."));
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> player.sendMessage(color("&8[&cTeam&8] &c" + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void forceJoin(Player player, String[] args) {
@@ -557,14 +608,31 @@ public final class TeamCommand implements CommandExecutor {
         Team team = team(arg(args, 1, "/team forcejoin <team> <player> [role]"));
         Player target = target(arg(args, 2, "/team forcejoin <team> <player> [role]"));
         TeamRole role = args.length >= 4 ? role(args[3]) : TeamRole.MEMBER;
-        complete(player, teams.forceJoin(team, target.getUniqueId(), role), "&fForce joined &c" + target.getName() + " &fto &c" + team.name() + "&f.");
+        teams.forceJoin(team, target.getUniqueId(), role).thenRun(() -> threading.runSync(() -> {
+            intel.factionHistory(target.getUniqueId(), target.getName(), team, "force_joined", player.getUniqueId());
+            intel.factionPunishmentLink(player, team, "force_joined", Map.of(
+                    "target", target.getUniqueId().toString(),
+                    "role", role.name()
+            ));
+            player.sendMessage(color("&8[&cTeam&8] &fForce joined &c" + target.getName() + " &fto &c" + team.name() + "&f."));
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> player.sendMessage(color("&8[&cTeam&8] &c" + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void forceKick(Player player, String[] args) {
         requireAdmin(player);
         Player target = target(arg(args, 1, "/team forcekick <player>"));
         Team team = teams.byPlayer(target.getUniqueId()).orElseThrow(() -> new IllegalArgumentException("Target is not in a faction."));
-        complete(player, teams.kick(team, target.getUniqueId()), "&fForce kicked &c" + target.getName() + " &ffrom &c" + team.name() + "&f.");
+        teams.kick(team, target.getUniqueId()).thenRun(() -> threading.runSync(() -> {
+            intel.factionHistory(target.getUniqueId(), target.getName(), team, "force_kicked", player.getUniqueId());
+            intel.factionPunishmentLink(player, team, "force_kicked", Map.of("target", target.getUniqueId().toString()));
+            player.sendMessage(color("&8[&cTeam&8] &fForce kicked &c" + target.getName() + " &ffrom &c" + team.name() + "&f."));
+        })).exceptionally(throwable -> {
+            threading.runSync(() -> player.sendMessage(color("&8[&cTeam&8] &c" + rootMessage(throwable))));
+            return null;
+        });
     }
 
     private void teleport(Player player, String[] args) {
